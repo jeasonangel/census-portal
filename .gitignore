@@ -1,0 +1,36 @@
+﻿# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Backend specific
+backend/dist/
+backend/node_modules/
+
+# Frontend specific
+frontend/dist/
+frontend/node_modules/
+frontend/.env
+frontend/.env.local
+
+# Railway specific
+.railway/

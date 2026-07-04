@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-cam-ink text-white font-sans antialiased;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-cam-panel border border-cam-line rounded-lg p-6;
+  }
+  .btn-primary {
+    @apply bg-cam-green text-white px-4 py-2 rounded-lg hover:bg-opacity-80 transition-colors font-medium;
+  }
+  .btn-secondary {
+    @apply border border-cam-line text-white px-4 py-2 rounded-lg hover:bg-cam-panel transition-colors;
+  }
+  .btn-outline {
+    @apply border border-cam-green text-cam-green px-4 py-2 rounded-lg hover:bg-cam-green/10 transition-colors;
+  }
+  .input {
+    @apply bg-cam-ink border border-cam-line rounded-lg px-4 py-2 w-full text-white focus:outline-none focus:border-cam-green transition-colors;
+  }
+  .label {
+    @apply text-cam-muted text-sm font-medium block mb-1;
+  }
+  .flag-bar {
+    @apply h-1 bg-gradient-to-r from-cam-green via-cam-yellow to-cam-red;
+  }
+}
