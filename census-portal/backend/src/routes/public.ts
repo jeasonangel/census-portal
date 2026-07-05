@@ -20,65 +20,9 @@ router.get('/regions', async (_req, res, next) => {
   }
 });
 
-// ============================================================
-// GET /public/regions/:code/departments (NO AUTH)
-// ============================================================
-router.get('/regions/:code/departments', async (req, res, next) => {
-  try {
-    const { code } = req.params;
-    const { rows } = await query(
-      `SELECT d.code, d.name, d.population
-       FROM spatial_geo r
-       JOIN spatial_geo d ON d.parent_id = r.id
-       WHERE r.code = $1 AND d.level = 'department'
-       ORDER BY d.name`,
-      [code]
-    );
-    res.json({ data: rows });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// ============================================================
-// GET /public/departments/:code/districts (NO AUTH)
-// ============================================================
-router.get('/departments/:code/districts', async (req, res, next) => {
-  try {
-    const { code } = req.params;
-    const { rows } = await query(
-      `SELECT d.code, d.name
-       FROM spatial_geo dept
-       JOIN spatial_geo d ON d.parent_id = dept.id
-       WHERE dept.code = $1 AND d.level = 'district'
-       ORDER BY d.name`,
-      [code]
-    );
-    res.json({ data: rows });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// ============================================================
-// GET /public/districts/:code/villages (NO AUTH)
-// ============================================================
-router.get('/districts/:code/villages', async (req, res, next) => {
-  try {
-    const { code } = req.params;
-    const { rows } = await query(
-      `SELECT v.name
-       FROM spatial_geo dist
-       JOIN spatial_geo v ON v.parent_id = dist.id
-       WHERE dist.code = $1 AND v.level = 'village'
-       ORDER BY v.name`,
-      [code]
-    );
-    res.json({ data: rows });
-  } catch (e) {
-    next(e);
-  }
-});
+// Sub-region hierarchy (departments/districts/villages) is intentionally
+// NOT exposed here — that drill-down requires an API key. See the
+// matching routes under /protected for the authenticated equivalents.
 
 // ============================================================
 // GET /public/indicators (NO AUTH)
@@ -98,7 +42,9 @@ router.get('/indicators', async (_req, res, next) => {
 });
 
 // ============================================================
-// GET /public/data (NO AUTH)
+// GET /public/data (NO AUTH) - region-level indicator values only.
+// Department/district/village data requires an API key (see
+// /protected/data, which accepts any geography level).
 // ============================================================
 router.get('/data', async (req, res, next) => {
   try {
@@ -109,7 +55,7 @@ router.get('/data', async (req, res, next) => {
     }
 
     const { rows } = await query(
-      `SELECT 
+      `SELECT
          g.code AS geography_code,
          g.name AS geography_name,
          g.level AS geography_level,
@@ -120,7 +66,7 @@ router.get('/data', async (req, res, next) => {
        FROM data_values dv
        JOIN spatial_geo g ON g.id = dv.geography_id
        JOIN indicators i ON i.id = dv.indicator_id
-       WHERE g.code = $1 AND i.code = $2 AND dv.year = $3`,
+       WHERE g.code = $1 AND i.code = $2 AND dv.year = $3 AND g.level = 'region'`,
       [geography, indicator, year]
     );
 
@@ -131,7 +77,7 @@ router.get('/data', async (req, res, next) => {
 });
 
 // ============================================================
-// GET /public/search (NO AUTH)
+// GET /public/search (NO AUTH) - regions only, same reasoning as /data.
 // ============================================================
 router.get('/search', async (req, res, next) => {
   try {
@@ -143,7 +89,7 @@ router.get('/search', async (req, res, next) => {
     const { rows } = await query(
       `SELECT code, name, level
        FROM spatial_geo
-       WHERE name ILIKE $1
+       WHERE name ILIKE $1 AND level = 'region'
        ORDER BY name
        LIMIT 20`,
       [`%${q}%`]

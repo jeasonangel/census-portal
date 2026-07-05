@@ -104,12 +104,13 @@ runner).
 ### `users`
 Stores accounts. Key columns beyond the obvious (`email`, `password_hash`,
 `full_name`, `organization`):
-- `user_type` — a **role** describing what kind of consumer the account is
-  (`NGO_DEVELOPER`, `NGO_DATA_ANALYST`, `NGO_PROJECT_MANAGER`, `RESEARCHER`,
-  `JOURNALIST`, `ADMIN`). Each role has a different **monthly request
-  quota** (see `RATE_LIMITS` in `backend/src/config/index.ts`), e.g.
-  `NGO_DEVELOPER` gets 150,000 requests/month, `RESEARCHER`/`JOURNALIST` get
-  15,000, `ADMIN` is unlimited.
+- `user_type` — a **role** of either `USER` or `ADMIN` (an earlier version
+  had five separate NGO/researcher/journalist tiers with different monthly
+  quotas; they were never reachable — registration always created
+  `NGO_DEVELOPER` accounts with no way to pick or change tier — so they were
+  collapsed into a single `USER` role). Each role has a **monthly request
+  quota** (see `RATE_LIMITS` in `backend/src/config/index.ts`): `USER` gets
+  150,000 requests/month, `ADMIN` is unlimited.
 - `plan` — a separate **billing tier** axis (`FREE` or `PAID`), independent
   of `user_type`. This governs *how many API keys* an account may hold
   simultaneously, not the request quota. See §7.

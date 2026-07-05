@@ -199,6 +199,68 @@ router.get('/upgrade-request', authenticateJWT, async (req, res, next) => {
 });
 
 // ============================================================
+// GET /protected/regions/:code/departments - Sub-region hierarchy
+// (API key required). The public equivalents were removed; only
+// region-level browsing is unauthenticated.
+// ============================================================
+router.get('/regions/:code/departments', authenticateApiKey, async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { rows } = await query(
+      `SELECT d.code, d.name, d.population
+       FROM spatial_geo r
+       JOIN spatial_geo d ON d.parent_id = r.id
+       WHERE r.code = $1 AND d.level = 'department'
+       ORDER BY d.name`,
+      [code]
+    );
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
+// GET /protected/departments/:code/districts (API key required)
+// ============================================================
+router.get('/departments/:code/districts', authenticateApiKey, async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { rows } = await query(
+      `SELECT d.code, d.name
+       FROM spatial_geo dept
+       JOIN spatial_geo d ON d.parent_id = dept.id
+       WHERE dept.code = $1 AND d.level = 'district'
+       ORDER BY d.name`,
+      [code]
+    );
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
+// GET /protected/districts/:code/villages (API key required)
+// ============================================================
+router.get('/districts/:code/villages', authenticateApiKey, async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { rows } = await query(
+      `SELECT v.name
+       FROM spatial_geo dist
+       JOIN spatial_geo v ON v.parent_id = dist.id
+       WHERE dist.code = $1 AND v.level = 'village'
+       ORDER BY v.name`,
+      [code]
+    );
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
 // GET /protected/data - Protected data access (API key required)
 // ============================================================
 router.get('/data', authenticateApiKey, async (req, res, next) => {

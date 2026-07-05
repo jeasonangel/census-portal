@@ -9,7 +9,8 @@ import { RATE_LIMITS, config } from '../config';
 // API key authentication - for data-access endpoints consumed
 // by external integrations. Enforces per-key monthly quotas.
 // ============================================================
-export async function authenticateApiKey(req: Request, _res: Response, next: NextFunction) {
+export async function authenticateApiKey(req: Request, res: Response, next: NextFunction) {
+  const start = Date.now();
   try {
     const apiKey = req.headers['x-api-key'] as string;
 
@@ -45,9 +46,27 @@ export async function authenticateApiKey(req: Request, _res: Response, next: Nex
       throw Unauthorized('Invalid API key');
     }
 
+    // From here on this is a genuine, resolved API key — write one
+    // usage_logs row per request once the response finishes, whatever
+    // the eventual status code (quota rejection included). Fired after
+    // the client already has its response, so a logging failure can
+    // never affect the request itself.
+    const endpoint = req.originalUrl;
+    const method = req.method;
+    const ip = req.ip;
+    const userId = matched.id;
+    const apiKeyId = matched.key_id;
+    res.on('finish', () => {
+      query(
+        `INSERT INTO usage_logs (user_id, api_key_id, endpoint, method, status_code, response_time_ms, ip_address)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [userId, apiKeyId, endpoint, method, res.statusCode, Date.now() - start, ip]
+      ).catch((err) => console.error('Failed to write usage log:', err));
+    });
+
     // Check rate limit
     if (matched.user_type !== 'ADMIN') {
-      const limit = RATE_LIMITS[matched.user_type as keyof typeof RATE_LIMITS] || 15000;
+      const limit = RATE_LIMITS[matched.user_type as keyof typeof RATE_LIMITS] || RATE_LIMITS.USER;
       if (matched.requests_used >= limit) {
         throw TooManyRequests(`Monthly quota of ${limit} requests reached.`);
       }

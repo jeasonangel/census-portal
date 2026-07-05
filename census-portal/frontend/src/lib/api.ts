@@ -90,28 +90,30 @@ export const protectedApi = (apiKey: string) => {
   return {
     getData: (geographyCode: string, indicatorCode: string, year?: number) =>
       client.get('/data', { params: { geography: geographyCode, indicator: indicatorCode, year: year || 2026 } }),
+
+    // Sub-region hierarchy — not available without a key, see publicApi
+    // for the region-only equivalents.
+    getDepartments: (regionCode: string) => client.get(`/regions/${regionCode}/departments`),
+    getDistricts: (deptCode: string) => client.get(`/departments/${deptCode}/districts`),
+    getVillages: (districtCode: string) => client.get(`/districts/${districtCode}/villages`),
   };
 };
 
+// Public, unauthenticated client — region level only. Departments,
+// districts, and villages require an API key (see protectedApi).
 export const publicApi = {
-  // Geography - Hierarchical
+  // Geography
   getRegions: () => axios.get(`${API_BASE}/public/regions`),
-  getDepartments: (regionCode: string) =>
-    axios.get(`${API_BASE}/public/regions/${regionCode}/departments`),
-  getDistricts: (deptCode: string) =>
-    axios.get(`${API_BASE}/public/departments/${deptCode}/districts`),
-  getVillages: (districtCode: string) =>
-    axios.get(`${API_BASE}/public/districts/${districtCode}/villages`),
 
   // Indicators
   getIndicators: () => axios.get(`${API_BASE}/public/indicators`),
 
-  // Data
+  // Data (region-level only)
   getData: (geographyCode: string, indicatorCode: string, year?: number) =>
     axios.get(`${API_BASE}/public/data`, {
       params: { geography: geographyCode, indicator: indicatorCode, year: year || 2026 },
     }),
 
-  // Search
+  // Search (regions only)
   search: (q: string) => axios.get(`${API_BASE}/public/search`, { params: { q } }),
 };

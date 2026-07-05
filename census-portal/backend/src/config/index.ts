@@ -19,11 +19,7 @@ export const config = {
 };
 
 export const RATE_LIMITS = {
-  NGO_DEVELOPER: 150000,
-  NGO_DATA_ANALYST: 60000,
-  NGO_PROJECT_MANAGER: 30000,
-  RESEARCHER: 15000,
-  JOURNALIST: 15000,
+  USER: 150000,
   ADMIN: -1, // Unlimited
 };
 

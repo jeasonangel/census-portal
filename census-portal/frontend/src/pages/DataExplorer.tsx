@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { publicApi } from '../lib/api';
+import { publicApi, protectedApi, getStoredApiKey } from '../lib/api';
 import {
   Search, Download, MapPin, Database, ChevronRight, ChevronDown,
-  Info, SlidersHorizontal, X, Key,
+  Info, SlidersHorizontal, X, Key, Lock,
 } from 'lucide-react';
 
 interface Geography {
@@ -68,6 +68,12 @@ export default function DataExplorer() {
   const [currentGeographyCode, setCurrentGeographyCode] = useState<string>('CE');
   const [currentGeographyName, setCurrentGeographyName] = useState<string>('Centre');
 
+  // Department/district/village drill-down requires an API key — the
+  // public API only serves region-level data. Anonymous visitors get
+  // region browsing only, with a prompt to sign in for the rest.
+  const apiKey = getStoredApiKey();
+  const client = apiKey ? protectedApi(apiKey) : null;
+
   // ============================================================
   // LOAD DATA
   // ============================================================
@@ -103,8 +109,12 @@ export default function DataExplorer() {
   }, []);
 
   const loadDepartments = async (regionCode: string) => {
+    if (!client) {
+      setDepartments([]);
+      return;
+    }
     try {
-      const response = await publicApi.getDepartments(regionCode);
+      const response = await client.getDepartments(regionCode);
       setDepartments(response.data.data || []);
     } catch (err) {
       console.error('Failed to load departments:', err);
@@ -113,8 +123,12 @@ export default function DataExplorer() {
   };
 
   const loadDistricts = async (deptCode: string) => {
+    if (!client) {
+      setDistricts([]);
+      return;
+    }
     try {
-      const response = await publicApi.getDistricts(deptCode);
+      const response = await client.getDistricts(deptCode);
       setDistricts(response.data.data || []);
     } catch (err) {
       console.error('Failed to load districts:', err);
@@ -123,8 +137,12 @@ export default function DataExplorer() {
   };
 
   const loadVillages = async (districtCode: string) => {
+    if (!client) {
+      setVillages([]);
+      return;
+    }
     try {
-      const response = await publicApi.getVillages(districtCode);
+      const response = await client.getVillages(districtCode);
       setVillages(response.data.data || []);
     } catch (err) {
       console.error('Failed to load villages:', err);
@@ -135,7 +153,9 @@ export default function DataExplorer() {
   const loadData = async (geographyCode: string, indicatorCode: string, year: number) => {
     setLoading(true);
     try {
-      const response = await publicApi.getData(geographyCode, indicatorCode, year);
+      const response = client
+        ? await client.getData(geographyCode, indicatorCode, year)
+        : await publicApi.getData(geographyCode, indicatorCode, year);
       const dataValues = response.data.data || [];
       setData(dataValues);
       setFilteredData(dataValues);
@@ -424,9 +444,19 @@ export default function DataExplorer() {
 
                   {region.code === selectedRegion && (
                     <div className="ml-3 border-l border-cam-line pl-1">
-                      {departments.length === 0 && (
+                      {!apiKey ? (
+                        <div className="flex items-start gap-1.5 text-xs text-cam-muted px-2 py-1.5">
+                          <Lock className="w-3 h-3 shrink-0 mt-0.5" />
+                          <span>
+                            <Link to="/api-keys" className="text-cam-yellow hover:underline">
+                              Get an API key
+                            </Link>{' '}
+                            to browse departments, districts and villages.
+                          </span>
+                        </div>
+                      ) : departments.length === 0 ? (
                         <div className="text-xs text-cam-muted px-2 py-1">No departments</div>
-                      )}
+                      ) : null}
                       {departments.map(dept => (
                         <div key={dept.code}>
                           <button

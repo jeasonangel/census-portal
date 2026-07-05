@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255),
     organization VARCHAR(255),
-    user_type VARCHAR(50) DEFAULT 'NGO_DEVELOPER',
+    user_type VARCHAR(50) DEFAULT 'USER',
     plan VARCHAR(20) DEFAULT 'FREE' NOT NULL,
     monthly_limit INTEGER DEFAULT 150000,
     requests_used INTEGER DEFAULT 0,
@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Backfill for databases created before the `plan` column existed
 ALTER TABLE users ADD COLUMN IF NOT EXISTS plan VARCHAR(20) DEFAULT 'FREE' NOT NULL;
+
+-- Backfill for accounts created under the old, now-removed user_type
+-- tiers (NGO_DEVELOPER, NGO_DATA_ANALYST, NGO_PROJECT_MANAGER,
+-- RESEARCHER, JOURNALIST) — collapsed down to a single non-admin role.
+UPDATE users SET user_type = 'USER' WHERE user_type NOT IN ('USER', 'ADMIN');
 
 -- ============================================================
 -- 2. API KEYS TABLE
