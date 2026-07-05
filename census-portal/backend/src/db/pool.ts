@@ -9,6 +9,9 @@ export const pool = new Pool({
   password: config.db.password,
   max: 20,
   idleTimeoutMillis: 30000,
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
 export const query = (text: string, params?: any[]) => pool.query(text, params);
