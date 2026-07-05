@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 
 -- ============================================================
--- 3. GEOGRAPHY TABLE (with PostGIS)
+-- 3. GEOGRAPHY TABLE
 -- ============================================================
 CREATE TABLE IF NOT EXISTS spatial_geo (
     id SERIAL PRIMARY KEY,
@@ -56,9 +56,13 @@ CREATE TABLE IF NOT EXISTS spatial_geo (
     population INTEGER,
     area_km2 DECIMAL(10,2),
     latitude DECIMAL(10,6),
-    longitude DECIMAL(10,6),
-    geom GEOMETRY
+    longitude DECIMAL(10,6)
+
 );
+
+-- Drop the unused PostGIS geometry column: the extension was never
+-- enabled and nothing ever populated or queried it (see README §11).
+ALTER TABLE spatial_geo DROP COLUMN IF EXISTS geom;
 
 -- ============================================================
 -- 4. INDICATORS TABLE

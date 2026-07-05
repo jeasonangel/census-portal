@@ -53,7 +53,6 @@ control), not claiming to be an authoritative statistical source.
                                                                       ▼
                                                           ┌──────────────────────┐
                                                           │   PostgreSQL 15+     │
-                                                          │  (+ PostGIS-ready)   │
                                                           └──────────────────────┘
 ```
 
@@ -66,8 +65,7 @@ control), not claiming to be an authoritative statistical source.
   API-key issuance, quota enforcement, and a small internal analytics layer.
 - **Database**: PostgreSQL, accessed via the `pg` driver with hand-written
   SQL (no ORM), using a `spatial_geo` self-referencing table to model the
-  4-level administrative hierarchy plus a `geom` column reserved for
-  PostGIS if real geographic boundaries are added later.
+  4-level administrative hierarchy.
 
 Nothing runs server-side rendered; the frontend is a pure client-side SPA
 served as static assets, calling the API over `fetch`/`axios`.
@@ -134,8 +132,10 @@ department row, a department's parent is a region row, and a region has no
 parent. `code` is a globally-unique short identifier (e.g. `CE` for Centre
 region, `MF` for Mfoundi department) used throughout the API instead of
 numeric IDs. Includes `population`, `area_km2`, and unused `latitude` /
-`longitude` / `geom` (`GEOMETRY`) columns reserved for a future real-map
-integration (PostGIS-ready but not populated).
+`longitude` columns reserved for a future real-map integration (a
+`geom GEOMETRY` column was also carried in the schema for this but was
+removed — the PostGIS extension was never enabled and nothing ever
+populated or queried it; see §11).
 
 ### `indicators`
 The catalogue of measurable statistics (10 seeded): `POP_TOT`, `POP_MALE`,
@@ -428,9 +428,11 @@ Useful section for a report's "future work" discussion:
   strict-mode compiler checks, `vite build`, and manual/scripted
   end-to-end smoke tests run against a live database during development,
   not a committed Jest/Vitest suite.
-- **`spatial_geo.geom` (PostGIS geometry column) is defined but empty** —
-  no real polygon/boundary data has been loaded, so there's no map view
-  yet; this is the natural hook for adding one.
+- **No real map view** — `spatial_geo` carried an unused `geom GEOMETRY`
+  column intended for PostGIS boundary data, but the extension was never
+  enabled and nothing ever populated it, so it was removed; adding a real
+  map would mean loading actual polygon/boundary data and re-enabling
+  PostGIS properly, not resurrecting the empty column.
 - **Recharts is installed but not used** — the Data Explorer currently
   renders results only as a table; a chart view was scoped out but the
   dependency is already in place.
