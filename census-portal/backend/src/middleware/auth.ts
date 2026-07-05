@@ -114,7 +114,7 @@ export async function authenticateJWT(req: Request, _res: Response, next: NextFu
 
     let payload: { uid: number };
     try {
-      payload = jwt.verify(token, config.jwtSecret) as { uid: number };
+      payload = jwt.verify(token, config.jwt.secret) as { uid: number };
     } catch {
       throw Unauthorized('Invalid or expired session');
     }
