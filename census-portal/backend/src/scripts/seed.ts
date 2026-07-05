@@ -792,7 +792,9 @@ for (const v of VILLAGES) {
     // --- 7. Create Admin User ---
     console.log('\n👤 Creating admin user...');
 
-    const hashedPassword = await bcrypt.hash(config.admin.password, 10);
+    const adminEmail = config.admin.email;
+    const adminPassword = config.admin.password;
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
     const { rows } = await query(
       `INSERT INTO users (email, password_hash, full_name, user_type, plan, monthly_limit, is_active, is_verified)
@@ -800,7 +802,7 @@ for (const v of VILLAGES) {
        ON CONFLICT (email) DO UPDATE SET
          password_hash = EXCLUDED.password_hash
        RETURNING id`,
-      [config.admin.email, hashedPassword]
+      [adminEmail, hashedPassword]
     );
 
     const adminId = rows[0].id;
@@ -817,8 +819,8 @@ for (const v of VILLAGES) {
 
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🔑 ADMIN CREDENTIALS:');
-    console.log(`   Email:    ${config.admin.email}`);
-    console.log(`   Password: ${config.admin.password}`);
+    console.log(`   Email:    ${adminEmail}`);
+    console.log(`   Password: ${adminPassword}`);
     console.log(`   API Key:  ${raw}`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

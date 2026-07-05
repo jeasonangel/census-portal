@@ -29,7 +29,7 @@ export const config = {
   },
   
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:5173',
+    origin: process.env.CORS_ORIGIN || 'https://frontend-production-0427.up.railway.app,http://localhost:3000,http://localhost:5173',
   },
   
   bcrypt: {
