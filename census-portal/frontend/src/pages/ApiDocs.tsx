@@ -10,9 +10,6 @@ interface EndpointRow {
 
 const PUBLIC_ENDPOINTS: EndpointRow[] = [
   { method: 'GET', path: '/public/regions', description: 'List all regions' },
-  { method: 'GET', path: '/protected/regions/:code/departments', description: 'Departments within a region' },
-  { method: 'GET', path: '/protected/departments/:code/districts', description: 'Districts within a department' },
-  { method: 'GET', path: '/protected/districts/:code/villages', description: 'Villages within a district' },
   { method: 'GET', path: '/public/indicators', description: 'List all available indicators' },
   { method: 'GET', path: '/public/data?geography=&indicator=&year=', description: 'Indicator value for a geography/year' },
   { method: 'GET', path: '/public/search?q=', description: 'Search geographies by name' },
@@ -20,6 +17,9 @@ const PUBLIC_ENDPOINTS: EndpointRow[] = [
 
 const DATA_ENDPOINTS: EndpointRow[] = [
   { method: 'GET', path: '/protected/data?geography=&indicator=&year=', description: 'Same as /public/data, counted against your quota' },
+   { method: 'GET', path: '/protected/regions/:code/departments', description: 'Departments within a region' },
+  { method: 'GET', path: '/protected/departments/:code/districts', description: 'Districts within a department' },
+  { method: 'GET', path: '/protected/districts/:code/villages', description: 'Villages within a district' },
 ];
 
 const ANALYTICS_ENDPOINTS: EndpointRow[] = [
