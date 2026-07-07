@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import { parse } from 'csv-parse/sync';
+import { z } from 'zod';
 import { authenticateJWT, requireAdmin } from '../middleware/auth';
-import { query } from '../db/pool';
+import { query, pool } from '../db/pool';
 import { BadRequest, Conflict, NotFound } from '../utils/errors';
 import { PLAN_LIMITS } from '../config';
 
@@ -8,6 +10,20 @@ const router = Router();
 
 // All admin routes require a signed-in ADMIN account
 router.use(authenticateJWT, requireAdmin);
+
+// One data_values row per CSV row. geography_code/indicator_code must
+// already exist (this is a data-value import, not a way to define new
+// geographies or indicators); gender/age_group default to 'all' the
+// same way seed.ts's hand-authored rows do.
+const ImportRowSchema = z.object({
+  geography_code: z.string().trim().min(1),
+  indicator_code: z.string().trim().min(1),
+  year: z.coerce.number().int().min(1900).max(2100),
+  value: z.coerce.number(),
+  gender: z.string().trim().min(1).optional(),
+  age_group: z.string().trim().min(1).optional(),
+  source: z.string().trim().optional(),
+});
 
 // ============================================================
 // GET /admin/users - List accounts with plan/usage (for support
@@ -122,6 +138,108 @@ router.patch('/upgrade-requests/:id', async (req, res, next) => {
     );
 
     res.json({ data: updated[0] });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
+// POST /admin/import - One-off manual CSV import of data_values.
+// No live BUCREP/INS connection; an admin pastes/uploads a CSV
+// export from wherever the source figures came from. Columns:
+// geography_code, indicator_code, year, value, [gender, age_group,
+// source]. Existing (geography, indicator, year, gender, age_group)
+// combos are overwritten; unknown codes are reported per-row rather
+// than failing the whole import.
+// ============================================================
+router.post('/import', async (req, res, next) => {
+  try {
+    const csv = typeof req.body.csv === 'string' ? req.body.csv : '';
+    if (!csv.trim()) {
+      throw BadRequest('csv (raw CSV text) is required');
+    }
+
+    let records: Record<string, string>[];
+    try {
+      records = parse(csv, { columns: true, skip_empty_lines: true, trim: true });
+    } catch (e: any) {
+      throw BadRequest(`Could not parse CSV: ${e.message}`);
+    }
+
+    if (records.length === 0) {
+      throw BadRequest('CSV has no data rows');
+    }
+
+    const errors: { row: number; message: string }[] = [];
+    let inserted = 0;
+    let updated = 0;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (let i = 0; i < records.length; i++) {
+        const rowNum = i + 2; // +1 for 0-index, +1 for the header row
+        const parsed = ImportRowSchema.safeParse(records[i]);
+        if (!parsed.success) {
+          errors.push({
+            row: rowNum,
+            message: parsed.error.issues.map((iss) => `${iss.path.join('.')}: ${iss.message}`).join('; '),
+          });
+          continue;
+        }
+        const row = parsed.data;
+
+        const geo = await client.query(`SELECT id FROM spatial_geo WHERE code = $1`, [row.geography_code]);
+        if (geo.rowCount === 0) {
+          errors.push({ row: rowNum, message: `Unknown geography_code "${row.geography_code}"` });
+          continue;
+        }
+
+        const ind = await client.query(`SELECT id FROM indicators WHERE code = $1`, [row.indicator_code]);
+        if (ind.rowCount === 0) {
+          errors.push({ row: rowNum, message: `Unknown indicator_code "${row.indicator_code}"` });
+          continue;
+        }
+
+        const { rows: upserted } = await client.query(
+          `INSERT INTO data_values (geography_id, indicator_id, year, value, gender, age_group, source)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (geography_id, indicator_id, year, gender, age_group)
+           DO UPDATE SET value = EXCLUDED.value, source = EXCLUDED.source, last_updated = CURRENT_TIMESTAMP
+           RETURNING (xmax = 0) AS inserted`,
+          [
+            geo.rows[0].id,
+            ind.rows[0].id,
+            row.year,
+            row.value,
+            row.gender || 'all',
+            row.age_group || 'all',
+            row.source || 'Manual Import',
+          ]
+        );
+
+        if (upserted[0].inserted) inserted++;
+        else updated++;
+      }
+
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    res.json({
+      data: {
+        total_rows: records.length,
+        valid_rows: inserted + updated,
+        inserted,
+        updated,
+        errors,
+      },
+    });
   } catch (e) {
     next(e);
   }

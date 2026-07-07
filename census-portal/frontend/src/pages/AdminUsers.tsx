@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { adminApi, getStoredToken, getStoredUser } from '../lib/api';
-import { ShieldAlert, RefreshCw, Users, Key, Check, X, Inbox } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Users, Key, Check, X, Inbox, Upload } from 'lucide-react';
 
 interface AdminUserRow {
   id: number;
@@ -144,14 +144,20 @@ export default function AdminUsers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Users className="w-6 h-6 text-cam-yellow" />
-        <div>
-          <h1 className="text-2xl font-bold">Admin: Accounts</h1>
-          <p className="text-cam-muted text-sm">
-            Grant or revoke plan upgrades. Upgrading a user's plan raises how many active API keys they may hold.
-          </p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Users className="w-6 h-6 text-cam-yellow" />
+          <div>
+            <h1 className="text-2xl font-bold">Admin: Accounts</h1>
+            <p className="text-cam-muted text-sm">
+              Grant or revoke plan upgrades. Upgrading a user's plan raises how many active API keys they may hold.
+            </p>
+          </div>
         </div>
+        <Link to="/admin/import" className="btn-secondary flex items-center gap-2 text-sm shrink-0">
+          <Upload className="w-4 h-4" />
+          Import Data
+        </Link>
       </div>
 
       {error && (

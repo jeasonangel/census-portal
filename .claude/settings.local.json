@@ -17,7 +17,10 @@
       "PowerShell(Get-NetTCPConnection -LocalPort 5175 -State Listen -ErrorAction SilentlyContinue)",
       "Bash(curl -s -o /dev/null -w \"5173: %{http_code}\\\\n\" http://localhost:5173/)",
       "Bash(curl -s -o /dev/null -w \"5174: %{http_code}\\\\n\" http://localhost:5174/)",
-      "Bash(curl -s -o /dev/null -w \"backend health: %{http_code}\\\\n\" http://localhost:3001/health)"
+      "Bash(curl -s -o /dev/null -w \"backend health: %{http_code}\\\\n\" http://localhost:3001/health)",
+      "Read(//c/Users/DELL/AppData/Local/Temp/claude/c--Users-DELL-Desktop-BtechDesign-project-cameroon-census-project/6d915f8f-d3cc-4eb5-8370-88975118a39e/scratchpad/**)",
+      "Bash(curl -s -X POST http://localhost:3001/api/v1/admin/import -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -H 'Content-Type: application/json' --data-binary @/c/Users/DELL/AppData/Local/Temp/claude/c--Users-DELL-Desktop-BtechDesign-project-cameroon-census-project/6d915f8f-d3cc-4eb5-8370-88975118a39e/scratchpad/payload.json)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}\\\\n' -X POST http://localhost:3001/api/v1/admin/import -H 'Content-Type: application/json' --data-binary @/c/Users/DELL/AppData/Local/Temp/claude/c--Users-DELL-Desktop-BtechDesign-project-cameroon-census-project/6d915f8f-d3cc-4eb5-8370-88975118a39e/scratchpad/payload.json)"
     ]
   }
 }

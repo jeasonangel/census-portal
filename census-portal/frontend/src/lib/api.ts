@@ -78,6 +78,7 @@ export const adminApi = (token: string) => {
     listUpgradeRequests: () => client.get('/upgrade-requests'),
     resolveUpgradeRequest: (id: number, action: 'approve' | 'reject') =>
       client.patch(`/upgrade-requests/${id}`, { action }),
+    importData: (csv: string) => client.post('/import', { csv }),
   };
 };
 
