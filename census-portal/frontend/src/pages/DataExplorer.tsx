@@ -719,9 +719,7 @@ export default function DataExplorer() {
             <div className="flex items-start gap-2 text-xs text-cam-yellow bg-cam-yellow/10 border border-cam-yellow/20 rounded-lg px-3 py-2">
               <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                Admin mode — you can browse every level without an API key, and edit any value
-                directly in the table below. Changes save immediately and are what the public site
-                and NGO API integrations see on their next request.
+                Admin mode — Changes save immediately
               </span>
             </div>
           )}
