@@ -157,6 +157,70 @@ const EditRowSchema = z
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' });
 
 // ============================================================
+// GET /admin/regions/:code/departments - Sub-region hierarchy for the
+// admin data explorer. Mirrors /protected/regions/:code/departments,
+// but gated on the signed-in admin's JWT instead of an API key — an
+// admin browsing/editing the full dataset shouldn't need to also hold
+// a personal API key.
+// ============================================================
+router.get('/regions/:code/departments', async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { rows } = await query(
+      `SELECT d.code, d.name, d.population
+       FROM spatial_geo r
+       JOIN spatial_geo d ON d.parent_id = r.id
+       WHERE r.code = $1 AND d.level = 'department'
+       ORDER BY d.name`,
+      [code]
+    );
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
+// GET /admin/departments/:code/districts
+// ============================================================
+router.get('/departments/:code/districts', async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { rows } = await query(
+      `SELECT d.code, d.name
+       FROM spatial_geo dept
+       JOIN spatial_geo d ON d.parent_id = dept.id
+       WHERE dept.code = $1 AND d.level = 'district'
+       ORDER BY d.name`,
+      [code]
+    );
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
+// GET /admin/districts/:code/villages
+// ============================================================
+router.get('/districts/:code/villages', async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { rows } = await query(
+      `SELECT v.name
+       FROM spatial_geo dist
+       JOIN spatial_geo v ON v.parent_id = dist.id
+       WHERE dist.code = $1 AND v.level = 'village'
+       ORDER BY v.name`,
+      [code]
+    );
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
 // GET /admin/data - Search/browse individual data_values rows so an
 // admin can find one record to correct, instead of re-running a full
 // CSV import. Filterable by geography/indicator code, year, and a
@@ -202,7 +266,7 @@ router.get('/data', async (req, res, next) => {
     );
 
     const { rows } = await query(
-      `SELECT dv.id, g.code AS geography_code, g.name AS geography_name,
+      `SELECT dv.id, g.code AS geography_code, g.name AS geography_name, g.level AS geography_level,
               i.code AS indicator_code, i.name AS indicator_name, i.unit,
               dv.year, dv.value, dv.gender, dv.age_group, dv.source, dv.last_updated
        FROM data_values dv

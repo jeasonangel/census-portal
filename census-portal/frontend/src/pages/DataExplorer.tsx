@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { publicApi, protectedApi, getStoredApiKey } from '../lib/api';
+import { publicApi, protectedApi, adminApi, getStoredApiKey, getStoredToken, getStoredUser } from '../lib/api';
 import {
   Search, Download, MapPin, Database, ChevronRight, ChevronDown,
-  Info, SlidersHorizontal, X, Key, Lock,
+  Info, SlidersHorizontal, X, Key, Lock, Pencil, Save, RefreshCw, ShieldCheck,
 } from 'lucide-react';
 
 interface Geography {
@@ -22,13 +22,18 @@ interface Indicator {
 }
 
 interface DataValue {
+  id?: number;
   geography_code: string;
   geography_name: string;
   geography_level: string;
+  indicator_code?: string;
   indicator_name: string;
   unit: string;
   year: number;
   value: number;
+  gender?: string;
+  age_group?: string;
+  source?: string | null;
 }
 
 const CENSUS_YEAR = 2026;
@@ -63,14 +68,27 @@ export default function DataExplorer() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Inline editing (admin only)
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
+  const [savingId, setSavingId] = useState<number | null>(null);
+  const [editError, setEditError] = useState<string>('');
+
   // Current level
   const [currentLevel, setCurrentLevel] = useState<'region' | 'department' | 'district' | 'village'>('region');
   const [currentGeographyCode, setCurrentGeographyCode] = useState<string>('CE');
   const [currentGeographyName, setCurrentGeographyName] = useState<string>('Centre');
 
-  // Department/district/village drill-down requires an API key — the
-  // public API only serves region-level data. Anonymous visitors get
-  // region browsing only, with a prompt to sign in for the rest.
+  // Department/district/village drill-down normally requires an API
+  // key — the public API only serves region-level data. An admin is
+  // signed in with a JWT already, so they get full-hierarchy browsing
+  // (and inline editing) without needing to also hold a personal key.
+  const user = getStoredUser();
+  const token = getStoredToken();
+  const isAdmin = user?.user_type === 'ADMIN';
+  const adminClient = isAdmin && token ? adminApi(token) : null;
+  const canBrowseHierarchy = !!adminClient || !!getStoredApiKey();
+
   const apiKey = getStoredApiKey();
   const client = apiKey ? protectedApi(apiKey) : null;
 
@@ -109,12 +127,13 @@ export default function DataExplorer() {
   }, []);
 
   const loadDepartments = async (regionCode: string) => {
-    if (!client) {
+    const source = adminClient || client;
+    if (!source) {
       setDepartments([]);
       return;
     }
     try {
-      const response = await client.getDepartments(regionCode);
+      const response = await source.getDepartments(regionCode);
       setDepartments(response.data.data || []);
     } catch (err) {
       console.error('Failed to load departments:', err);
@@ -123,12 +142,13 @@ export default function DataExplorer() {
   };
 
   const loadDistricts = async (deptCode: string) => {
-    if (!client) {
+    const source = adminClient || client;
+    if (!source) {
       setDistricts([]);
       return;
     }
     try {
-      const response = await client.getDistricts(deptCode);
+      const response = await source.getDistricts(deptCode);
       setDistricts(response.data.data || []);
     } catch (err) {
       console.error('Failed to load districts:', err);
@@ -137,12 +157,13 @@ export default function DataExplorer() {
   };
 
   const loadVillages = async (districtCode: string) => {
-    if (!client) {
+    const source = adminClient || client;
+    if (!source) {
       setVillages([]);
       return;
     }
     try {
-      const response = await client.getVillages(districtCode);
+      const response = await source.getVillages(districtCode);
       setVillages(response.data.data || []);
     } catch (err) {
       console.error('Failed to load villages:', err);
@@ -153,10 +174,24 @@ export default function DataExplorer() {
   const loadData = async (geographyCode: string, indicatorCode: string, year: number) => {
     setLoading(true);
     try {
-      const response = client
-        ? await client.getData(geographyCode, indicatorCode, year)
-        : await publicApi.getData(geographyCode, indicatorCode, year);
-      const dataValues = response.data.data || [];
+      let dataValues: DataValue[];
+      if (adminClient) {
+        // Admin path: same query the Manage Data page uses, which
+        // includes each row's id — that id is what makes the table
+        // below editable instead of just a read-only view.
+        const response = await adminClient.listData({
+          geography: geographyCode,
+          indicator: indicatorCode,
+          year,
+          limit: 100,
+        });
+        dataValues = response.data.data || [];
+      } else {
+        const response = client
+          ? await client.getData(geographyCode, indicatorCode, year)
+          : await publicApi.getData(geographyCode, indicatorCode, year);
+        dataValues = response.data.data || [];
+      }
       setData(dataValues);
       setFilteredData(dataValues);
     } catch (err) {
@@ -165,6 +200,35 @@ export default function DataExplorer() {
       setFilteredData([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const startEditValue = (row: DataValue) => {
+    if (row.id == null) return;
+    setEditingId(row.id);
+    setEditValue(String(row.value));
+    setEditError('');
+  };
+
+  const cancelEditValue = () => {
+    setEditingId(null);
+    setEditValue('');
+  };
+
+  const saveEditValue = async (row: DataValue) => {
+    if (!adminClient || row.id == null) return;
+    setSavingId(row.id);
+    setEditError('');
+    try {
+      const res = await adminClient.updateData(row.id, { value: Number(editValue) });
+      const updatedValue = res.data.data.value;
+      setData((prev) => prev.map((d) => (d.id === row.id ? { ...d, value: updatedValue } : d)));
+      setFilteredData((prev) => prev.map((d) => (d.id === row.id ? { ...d, value: updatedValue } : d)));
+      setEditingId(null);
+    } catch (err: any) {
+      setEditError(err.response?.data?.error?.message || 'Failed to save changes');
+    } finally {
+      setSavingId(null);
     }
   };
 
@@ -444,7 +508,7 @@ export default function DataExplorer() {
 
                   {region.code === selectedRegion && (
                     <div className="ml-3 border-l border-cam-line pl-1">
-                      {!apiKey ? (
+                      {!canBrowseHierarchy ? (
                         <div className="flex items-start gap-1.5 text-xs text-cam-muted px-2 py-1.5">
                           <Lock className="w-3 h-3 shrink-0 mt-0.5" />
                           <span>
@@ -651,6 +715,22 @@ export default function DataExplorer() {
           </div>
 
           {/* Content */}
+          {isAdmin && (
+            <div className="flex items-start gap-2 text-xs text-cam-yellow bg-cam-yellow/10 border border-cam-yellow/20 rounded-lg px-3 py-2">
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                Admin mode — you can browse every level without an API key, and edit any value
+                directly in the table below. Changes save immediately and are what the public site
+                and NGO API integrations see on their next request.
+              </span>
+            </div>
+          )}
+          {editError && (
+            <div className="bg-red-500/20 text-red-400 p-3 rounded-lg border border-red-500/20 text-sm">
+              {editError}
+            </div>
+          )}
+
           <div className="card overflow-hidden p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -662,12 +742,15 @@ export default function DataExplorer() {
                       <th className="text-right p-3 text-cam-muted text-xs uppercase font-medium">Value</th>
                       <th className="text-left p-3 text-cam-muted text-xs uppercase font-medium">Unit</th>
                       <th className="text-left p-3 text-cam-muted text-xs uppercase font-medium">Year</th>
+                      {isAdmin && (
+                        <th className="text-right p-3 text-cam-muted text-xs uppercase font-medium">Action</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-cam-line">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-cam-muted">
+                        <td colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-cam-muted">
                           <div className="flex justify-center items-center gap-2">
                             <span className="animate-spin rounded-full h-4 w-4 border-2 border-cam-green border-t-transparent"></span>
                             Loading...
@@ -676,24 +759,72 @@ export default function DataExplorer() {
                       </tr>
                     ) : filteredData.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-cam-muted">
+                        <td colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-cam-muted">
                           <Database className="w-8 h-8 mx-auto mb-2 opacity-30" />
                           No data found for this selection
                         </td>
                       </tr>
                     ) : (
-                      filteredData.map((d, i) => (
-                        <tr key={i} className="hover:bg-cam-panel/50 transition-colors">
-                          <td className="p-3 font-medium text-white">{d.geography_name}</td>
-                          <td className="p-3 text-cam-muted capitalize">{d.geography_level}</td>
-                          <td className="p-3 text-cam-muted">{d.indicator_name}</td>
-                          <td className="p-3 text-right font-mono text-cam-green">
-                            {Number(d.value).toLocaleString()}
-                          </td>
-                          <td className="p-3 text-cam-muted text-xs">{d.unit}</td>
-                          <td className="p-3 text-cam-muted">{d.year}</td>
-                        </tr>
-                      ))
+                      filteredData.map((d, i) => {
+                        const isEditingRow = isAdmin && d.id != null && editingId === d.id;
+                        return (
+                          <tr key={d.id ?? i} className="hover:bg-cam-panel/50 transition-colors">
+                            <td className="p-3 font-medium text-white">{d.geography_name}</td>
+                            <td className="p-3 text-cam-muted capitalize">{d.geography_level}</td>
+                            <td className="p-3 text-cam-muted">{d.indicator_name}</td>
+                            <td className="p-3 text-right font-mono text-cam-green">
+                              {isEditingRow ? (
+                                <input
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  className="bg-cam-ink border border-cam-line rounded px-2 py-1 text-xs text-white w-28 text-right focus:outline-none focus:border-cam-green"
+                                  autoFocus
+                                />
+                              ) : (
+                                Number(d.value).toLocaleString()
+                              )}
+                            </td>
+                            <td className="p-3 text-cam-muted text-xs">{d.unit}</td>
+                            <td className="p-3 text-cam-muted">{d.year}</td>
+                            {isAdmin && (
+                              <td className="p-3 text-right">
+                                {d.id == null ? null : isEditingRow ? (
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={() => saveEditValue(d)}
+                                      disabled={savingId === d.id}
+                                      className="inline-flex items-center gap-1 text-xs bg-cam-green/20 text-cam-green border border-cam-green/30 rounded-lg px-2 py-1 hover:bg-cam-green/30 disabled:opacity-40"
+                                    >
+                                      {savingId === d.id ? (
+                                        <RefreshCw className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <Save className="w-3 h-3" />
+                                      )}
+                                      Save
+                                    </button>
+                                    <button
+                                      onClick={cancelEditValue}
+                                      disabled={savingId === d.id}
+                                      className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white disabled:opacity-40"
+                                    >
+                                      <X className="w-3 h-3" />
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => startEditValue(d)}
+                                    className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white hover:border-cam-yellow/40"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                    Edit
+                                  </button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

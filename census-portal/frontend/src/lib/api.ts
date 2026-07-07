@@ -91,6 +91,12 @@ export const adminApi = (token: string) => {
       id: number,
       fields: Partial<{ year: number; value: number; gender: string; age_group: string; source: string }>
     ) => client.patch(`/data/${id}`, fields),
+
+    // Full geography hierarchy + data access for the admin's own Data
+    // Explorer view — no API key needed, JWT + ADMIN role is enough.
+    getDepartments: (regionCode: string) => client.get(`/regions/${regionCode}/departments`),
+    getDistricts: (deptCode: string) => client.get(`/departments/${deptCode}/districts`),
+    getVillages: (districtCode: string) => client.get(`/districts/${districtCode}/villages`),
   };
 };
 
