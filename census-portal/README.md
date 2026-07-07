@@ -149,6 +149,7 @@ age_group)` combination, holding a decimal `value`. A `UNIQUE` constraint on
 that tuple plus `ON CONFLICT DO UPDATE` upserts in the seed script make
 re-seeding idempotent.
 
+
 ### `usage_logs`
 A table for per-request audit logging (`endpoint`, `method`, `status_code`,
 `response_time_ms`, `ip_address`, `timestamp`) — schema exists but is not
