@@ -6,6 +6,7 @@ import DataExplorer from './pages/DataExplorer';
 import ApiKeyManager from './pages/ApiKeyManager';
 import AdminUsers from './pages/AdminUsers';
 import DataImport from './pages/DataImport';
+import ManageData from './pages/ManageData';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import UpgradePlan from './pages/UpgradePlan';
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/docs" element={<ApiDocs />} />
           <Route path="/admin" element={<AdminUsers />} />
           <Route path="/admin/import" element={<DataImport />} />
+          <Route path="/admin/data" element={<ManageData />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="*" element={<Navigate to="/" />} />

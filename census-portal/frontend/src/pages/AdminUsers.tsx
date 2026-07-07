@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { adminApi, getStoredToken, getStoredUser } from '../lib/api';
-import { ShieldAlert, RefreshCw, Users, Key, Check, X, Inbox, Upload } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Users, Key, Check, X, Inbox, Upload, Pencil } from 'lucide-react';
 
 interface AdminUserRow {
   id: number;
@@ -154,10 +154,16 @@ export default function AdminUsers() {
             </p>
           </div>
         </div>
-        <Link to="/admin/import" className="btn-secondary flex items-center gap-2 text-sm shrink-0">
-          <Upload className="w-4 h-4" />
-          Import Data
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link to="/admin/data" className="btn-secondary flex items-center gap-2 text-sm">
+            <Pencil className="w-4 h-4" />
+            Manage Data
+          </Link>
+          <Link to="/admin/import" className="btn-secondary flex items-center gap-2 text-sm">
+            <Upload className="w-4 h-4" />
+            Import Data
+          </Link>
+        </div>
       </div>
 
       {error && (

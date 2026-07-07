@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { adminApi, getStoredToken, getStoredUser } from '../lib/api';
-import { ShieldAlert, Upload, FileText, Download, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, Upload, FileText, Download, RefreshCw, CheckCircle2, AlertTriangle, Pencil } from 'lucide-react';
 
 interface ImportSummary {
   total_rows: number;
@@ -102,15 +102,22 @@ export default function DataImport() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Upload className="w-6 h-6 text-cam-yellow" />
-        <div>
-          <h1 className="text-2xl font-bold">Admin: Import Data</h1>
-          <p className="text-cam-muted text-sm">
-            One-off manual CSV import — there's no live BUCREP/INS connection. Upload a CSV export
-            whenever new figures need to be loaded.
-          </p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Upload className="w-6 h-6 text-cam-yellow" />
+          <div>
+            <h1 className="text-2xl font-bold">Admin: Import Data</h1>
+            <p className="text-cam-muted text-sm">
+              One-off manual CSV import — there's no live BUCREP/INS connection. Upload a CSV export
+              whenever new figures need to be loaded. To fix or tweak a single existing value, use{' '}
+              <Link to="/admin/data" className="text-cam-yellow hover:underline">Manage Data</Link> instead.
+            </p>
+          </div>
         </div>
+        <Link to="/admin/data" className="btn-secondary flex items-center gap-2 text-sm shrink-0">
+          <Pencil className="w-4 h-4" />
+          Manage Data
+        </Link>
       </div>
 
       {error && (

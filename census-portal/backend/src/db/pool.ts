@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // ✅ Use DATABASE_URL from environment (Railway) or fallback to config
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = process.env.DATABASE_URL
 
 if (!DATABASE_URL) {
   console.error('❌ DATABASE_URL is not set in environment variables');

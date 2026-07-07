@@ -143,6 +143,132 @@ router.patch('/upgrade-requests/:id', async (req, res, next) => {
   }
 });
 
+// Fields an admin may change on a single data_values row. Geography
+// and indicator are intentionally not editable here — changing which
+// place/indicator a row belongs to is a delete+recreate, not an edit.
+const EditRowSchema = z
+  .object({
+    year: z.coerce.number().int().min(1900).max(2100).optional(),
+    value: z.coerce.number().optional(),
+    gender: z.string().trim().min(1).optional(),
+    age_group: z.string().trim().min(1).optional(),
+    source: z.string().trim().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' });
+
+// ============================================================
+// GET /admin/data - Search/browse individual data_values rows so an
+// admin can find one record to correct, instead of re-running a full
+// CSV import. Filterable by geography/indicator code, year, and a
+// free-text match on geography/indicator name.
+// ============================================================
+router.get('/data', async (req, res, next) => {
+  try {
+    const { geography, indicator, year, search, page = '1', limit = '25' } = req.query;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (typeof geography === 'string' && geography.trim()) {
+      params.push(geography.trim());
+      conditions.push(`g.code = $${params.length}`);
+    }
+    if (typeof indicator === 'string' && indicator.trim()) {
+      params.push(indicator.trim());
+      conditions.push(`i.code = $${params.length}`);
+    }
+    if (typeof year === 'string' && year.trim()) {
+      params.push(parseInt(year, 10));
+      conditions.push(`dv.year = $${params.length}`);
+    }
+    if (typeof search === 'string' && search.trim()) {
+      params.push(`%${search.trim()}%`);
+      conditions.push(`(g.name ILIKE $${params.length} OR i.name ILIKE $${params.length})`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 25));
+    const offset = (pageNum - 1) * limitNum;
+
+    const { rows: countRows } = await query(
+      `SELECT COUNT(*)::int AS count
+       FROM data_values dv
+       JOIN spatial_geo g ON g.id = dv.geography_id
+       JOIN indicators i ON i.id = dv.indicator_id
+       ${where}`,
+      params
+    );
+
+    const { rows } = await query(
+      `SELECT dv.id, g.code AS geography_code, g.name AS geography_name,
+              i.code AS indicator_code, i.name AS indicator_name, i.unit,
+              dv.year, dv.value, dv.gender, dv.age_group, dv.source, dv.last_updated
+       FROM data_values dv
+       JOIN spatial_geo g ON g.id = dv.geography_id
+       JOIN indicators i ON i.id = dv.indicator_id
+       ${where}
+       ORDER BY dv.last_updated DESC, dv.id DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limitNum, offset]
+    );
+
+    res.json({ data: rows, meta: { total: countRows[0].count, page: pageNum, limit: limitNum } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
+// PATCH /admin/data/:id - Edit a single data_values row (the value
+// itself, or year/gender/age_group/source) without touching any other
+// record. Since /public and /protected data endpoints read straight
+// from this table, the corrected figure is live immediately.
+// ============================================================
+router.patch('/data/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const parsed = EditRowSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw BadRequest(parsed.error.issues.map((iss) => `${iss.path.join('.')}: ${iss.message}`).join('; '));
+    }
+
+    const fields = parsed.data;
+    const sets: string[] = [];
+    const values: any[] = [];
+    for (const [key, val] of Object.entries(fields)) {
+      values.push(val);
+      sets.push(`${key} = $${values.length}`);
+    }
+    sets.push('last_updated = CURRENT_TIMESTAMP');
+    values.push(id);
+
+    let rows;
+    try {
+      ({ rows } = await query(
+        `UPDATE data_values SET ${sets.join(', ')}
+         WHERE id = $${values.length}
+         RETURNING id, geography_id, indicator_id, year, value, gender, age_group, source, last_updated`,
+        values
+      ));
+    } catch (e: any) {
+      if (e.code === '23505') {
+        throw Conflict('Another row already exists for that geography/indicator/year/gender/age_group combination');
+      }
+      throw e;
+    }
+
+    if (rows.length === 0) {
+      throw NotFound('Data value not found');
+    }
+
+    res.json({ data: rows[0] });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ============================================================
 // POST /admin/import - One-off manual CSV import of data_values.
 // No live BUCREP/INS connection; an admin pastes/uploads a CSV

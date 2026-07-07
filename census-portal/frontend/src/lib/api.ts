@@ -79,6 +79,18 @@ export const adminApi = (token: string) => {
     resolveUpgradeRequest: (id: number, action: 'approve' | 'reject') =>
       client.patch(`/upgrade-requests/${id}`, { action }),
     importData: (csv: string) => client.post('/import', { csv }),
+    listData: (params: {
+      geography?: string;
+      indicator?: string;
+      year?: number;
+      search?: string;
+      page?: number;
+      limit?: number;
+    }) => client.get('/data', { params }),
+    updateData: (
+      id: number,
+      fields: Partial<{ year: number; value: number; gender: string; age_group: string; source: string }>
+    ) => client.patch(`/data/${id}`, fields),
   };
 };
 
