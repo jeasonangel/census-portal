@@ -25,6 +25,26 @@ const ImportRowSchema = z.object({
   source: z.string().trim().optional(),
 });
 
+// A new department/district/village must hang off an existing parent
+// one level up — this is what lets the geography tree stay a strict
+// region->department->district->village hierarchy instead of orphans.
+const PARENT_LEVEL: Record<string, string> = {
+  department: 'region',
+  district: 'department',
+  village: 'district',
+};
+
+const NewGeoSchema = z.object({
+  code: z.string().trim().min(1).max(20),
+  name: z.string().trim().min(1).max(100),
+  level: z.enum(['department', 'district', 'village']),
+  parent_code: z.string().trim().min(1),
+  population: z.coerce.number().int().nonnegative().optional(),
+  area_km2: z.coerce.number().nonnegative().optional(),
+  latitude: z.coerce.number().optional(),
+  longitude: z.coerce.number().optional(),
+});
+
 // ============================================================
 // GET /admin/users - List accounts with plan/usage (for support
 // staff deciding who to upgrade)
@@ -215,6 +235,59 @@ router.get('/districts/:code/villages', async (req, res, next) => {
       [code]
     );
     res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
+// POST /admin/geography - Create a new department, district, or
+// village under an existing parent. Regions aren't creatable here —
+// Cameroon's 10 regions are fixed and seeded once. The new entry has
+// no data_values yet; use Import or Manage Data to add figures for it.
+// ============================================================
+router.post('/geography', async (req, res, next) => {
+  try {
+    const parsed = NewGeoSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw BadRequest(parsed.error.issues.map((iss) => `${iss.path.join('.')}: ${iss.message}`).join('; '));
+    }
+    const { code, name, level, parent_code, population, area_km2, latitude, longitude } = parsed.data;
+
+    const parentLevel = PARENT_LEVEL[level];
+    const parent = await query(`SELECT id FROM spatial_geo WHERE code = $1 AND level = $2`, [
+      parent_code,
+      parentLevel,
+    ]);
+    if (parent.rowCount === 0) {
+      throw BadRequest(`Parent ${parentLevel} with code "${parent_code}" not found`);
+    }
+
+    let rows;
+    try {
+      ({ rows } = await query(
+        `INSERT INTO spatial_geo (code, name, level, parent_id, population, area_km2, latitude, longitude)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, code, name, level, parent_id, population, area_km2, latitude, longitude`,
+        [
+          code,
+          name,
+          level,
+          parent.rows[0].id,
+          population ?? null,
+          area_km2 ?? null,
+          latitude ?? null,
+          longitude ?? null,
+        ]
+      ));
+    } catch (e: any) {
+      if (e.code === '23505') {
+        throw Conflict(`A geography with code "${code}" already exists`);
+      }
+      throw e;
+    }
+
+    res.status(201).json({ data: rows[0] });
   } catch (e) {
     next(e);
   }

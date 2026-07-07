@@ -97,6 +97,13 @@ export const adminApi = (token: string) => {
     getDepartments: (regionCode: string) => client.get(`/regions/${regionCode}/departments`),
     getDistricts: (deptCode: string) => client.get(`/departments/${deptCode}/districts`),
     getVillages: (districtCode: string) => client.get(`/districts/${districtCode}/villages`),
+    addGeography: (geo: {
+      code: string;
+      name: string;
+      level: 'department' | 'district' | 'village';
+      parent_code: string;
+      population?: number;
+    }) => client.post('/geography', geo),
   };
 };
 

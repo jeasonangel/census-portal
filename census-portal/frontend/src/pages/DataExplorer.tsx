@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { publicApi, protectedApi, adminApi, getStoredApiKey, getStoredToken, getStoredUser } from '../lib/api';
 import {
   Search, Download, MapPin, Database, ChevronRight, ChevronDown,
-  Info, SlidersHorizontal, X, Key, Lock, Pencil, Save, RefreshCw, ShieldCheck,
+  Info, SlidersHorizontal, X, Key, Lock, Pencil, Save, RefreshCw, ShieldCheck, Plus,
 } from 'lucide-react';
 
 interface Geography {
@@ -73,6 +73,15 @@ export default function DataExplorer() {
   const [editValue, setEditValue] = useState<string>('');
   const [savingId, setSavingId] = useState<number | null>(null);
   const [editError, setEditError] = useState<string>('');
+
+  // Add department/district/village (admin only) — at most one "add"
+  // form open at a time, scoped to whichever level it was opened for.
+  const [addingLevel, setAddingLevel] = useState<'department' | 'district' | 'village' | null>(null);
+  const [newGeoCode, setNewGeoCode] = useState<string>('');
+  const [newGeoName, setNewGeoName] = useState<string>('');
+  const [newGeoPopulation, setNewGeoPopulation] = useState<string>('');
+  const [addingGeo, setAddingGeo] = useState<boolean>(false);
+  const [addGeoError, setAddGeoError] = useState<string>('');
 
   // Current level
   const [currentLevel, setCurrentLevel] = useState<'region' | 'department' | 'district' | 'village'>('region');
@@ -232,6 +241,56 @@ export default function DataExplorer() {
     }
   };
 
+  // Parent code for whichever level the "add" form is currently open
+  // for — a new department hangs off the selected region, a new
+  // district off the selected department, a new village off the
+  // selected district.
+  const addGeoParentCode =
+    addingLevel === 'department' ? selectedRegion
+    : addingLevel === 'district' ? selectedDepartment
+    : addingLevel === 'village' ? selectedDistrict
+    : '';
+
+  const startAddGeo = (level: 'department' | 'district' | 'village') => {
+    setAddingLevel(level);
+    setNewGeoCode('');
+    setNewGeoName('');
+    setNewGeoPopulation('');
+    setAddGeoError('');
+  };
+
+  const cancelAddGeo = () => {
+    setAddingLevel(null);
+    setAddGeoError('');
+  };
+
+  const submitAddGeo = async () => {
+    if (!adminClient || !addingLevel || !addGeoParentCode) return;
+    if (!newGeoCode.trim() || !newGeoName.trim()) {
+      setAddGeoError('Code and name are required');
+      return;
+    }
+    setAddingGeo(true);
+    setAddGeoError('');
+    try {
+      await adminClient.addGeography({
+        code: newGeoCode.trim().toUpperCase(),
+        name: newGeoName.trim(),
+        level: addingLevel,
+        parent_code: addGeoParentCode,
+        population: newGeoPopulation.trim() ? Number(newGeoPopulation.trim()) : undefined,
+      });
+      if (addingLevel === 'department') await loadDepartments(selectedRegion);
+      else if (addingLevel === 'district') await loadDistricts(selectedDepartment);
+      else if (addingLevel === 'village') await loadVillages(selectedDistrict);
+      setAddingLevel(null);
+    } catch (err: any) {
+      setAddGeoError(err.response?.data?.error?.message || 'Failed to add');
+    } finally {
+      setAddingGeo(false);
+    }
+  };
+
   // ============================================================
   // HANDLE NAVIGATION
   // ============================================================
@@ -247,6 +306,7 @@ export default function DataExplorer() {
     setDepartments([]);
     setDistricts([]);
     setVillages([]);
+    setAddingLevel(null);
 
     await loadDepartments(regionCode);
     await loadData(regionCode, selectedIndicator, selectedYear);
@@ -261,6 +321,7 @@ export default function DataExplorer() {
     setSelectedVillage('');
     setDistricts([]);
     setVillages([]);
+    setAddingLevel(null);
 
     await loadDistricts(deptCode);
     await loadData(deptCode, selectedIndicator, selectedYear);
@@ -273,6 +334,7 @@ export default function DataExplorer() {
     setCurrentLevel('district');
     setSelectedVillage('');
     setVillages([]);
+    setAddingLevel(null);
 
     await loadVillages(districtCode);
     await loadData(districtCode, selectedIndicator, selectedYear);
@@ -426,6 +488,68 @@ export default function DataExplorer() {
       active ? 'bg-cam-green/20 text-cam-yellow font-medium' : 'text-cam-muted hover:bg-cam-panel hover:text-white'
     }`;
 
+  // Admin-only "+ Add <level>" affordance shown at the bottom of a
+  // geography tree section. Renders either the trigger button or the
+  // inline code/name/population form, depending on whether this is
+  // the level currently being added to.
+  const renderAddGeo = (level: 'department' | 'district' | 'village', label: string) => {
+    if (!isAdmin) return null;
+
+    if (addingLevel !== level) {
+      return (
+        <button
+          onClick={() => startAddGeo(level)}
+          className="w-full flex items-center gap-1.5 text-left px-2 py-1.5 rounded text-xs text-cam-yellow/80 hover:text-cam-yellow hover:bg-cam-panel transition-colors"
+        >
+          <Plus className="w-3 h-3" />
+          Add {label}
+        </button>
+      );
+    }
+
+    return (
+      <div className="px-2 py-2 space-y-1.5 bg-cam-ink rounded border border-cam-line mt-1">
+        {addGeoError && <div className="text-xs text-cam-red">{addGeoError}</div>}
+        <input
+          value={newGeoCode}
+          onChange={(e) => setNewGeoCode(e.target.value)}
+          placeholder="Code (e.g. NEW1)"
+          className="w-full bg-cam-panel border border-cam-line rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cam-green"
+        />
+        <input
+          value={newGeoName}
+          onChange={(e) => setNewGeoName(e.target.value)}
+          placeholder={`${label} name`}
+          className="w-full bg-cam-panel border border-cam-line rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cam-green"
+        />
+        <input
+          value={newGeoPopulation}
+          onChange={(e) => setNewGeoPopulation(e.target.value)}
+          placeholder="Population (optional)"
+          className="w-full bg-cam-panel border border-cam-line rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cam-green"
+        />
+        <div className="flex justify-end gap-2 pt-0.5">
+          <button
+            onClick={submitAddGeo}
+            disabled={addingGeo}
+            className="inline-flex items-center gap-1 text-xs bg-cam-green/20 text-cam-green border border-cam-green/30 rounded px-2 py-1 hover:bg-cam-green/30 disabled:opacity-40"
+          >
+            {addingGeo ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            Save
+          </button>
+          <button
+            onClick={cancelAddGeo}
+            disabled={addingGeo}
+            className="inline-flex items-center gap-1 text-xs bg-cam-panel text-cam-muted border border-cam-line rounded px-2 py-1 hover:text-white disabled:opacity-40"
+          >
+            <X className="w-3 h-3" />
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // ============================================================
   // RENDER
   // ============================================================
@@ -564,14 +688,17 @@ export default function DataExplorer() {
                                           <span className="truncate">{v.name}</span>
                                         </button>
                                       ))}
+                                      {renderAddGeo('village', 'village')}
                                     </div>
                                   )}
                                 </div>
                               ))}
+                              {renderAddGeo('district', 'district')}
                             </div>
                           )}
                         </div>
                       ))}
+                      {renderAddGeo('department', 'department')}
                     </div>
                   )}
                 </div>
