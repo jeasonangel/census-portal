@@ -461,4 +461,5 @@ npm run dev              # starts the SPA on http://localhost:5173 (default Vite
 The frontend expects the API at `VITE_API_URL` (defaults to
 `http://localhost:3001/api/v1` if unset).
 
+
 Database_URL: postgresql://postgres.rhnokcskctbqstdtahga:Mesanges1234@aws-1-us-west-2.pooler.supabase.com:5432/postgres
