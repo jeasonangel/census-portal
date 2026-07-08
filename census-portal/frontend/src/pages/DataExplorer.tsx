@@ -78,6 +78,13 @@ export default function DataExplorer() {
   const [savingId, setSavingId] = useState<number | null>(null);
   const [editError, setEditError] = useState<string>('');
 
+  // Inline "create" for a row that has no data yet (admin only) — most
+  // rows in the villages breakdown table start this way. Keyed by
+  // geography_code since these placeholder rows have no id yet.
+  const [creatingKey, setCreatingKey] = useState<string | null>(null);
+  const [createValue, setCreateValue] = useState<string>('');
+  const [savingCreateKey, setSavingCreateKey] = useState<string | null>(null);
+
   // Add department/district/village (admin only) — at most one "add"
   // form open at a time, scoped to whichever level it was opened for.
   const [addingLevel, setAddingLevel] = useState<'department' | 'district' | 'village' | null>(null);
@@ -323,6 +330,48 @@ export default function DataExplorer() {
       setEditError(err.response?.data?.error?.message || 'Failed to delete value');
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const startCreateValue = (row: DataValue) => {
+    setCreatingKey(row.geography_code);
+    setCreateValue('');
+    setEditError('');
+  };
+
+  const cancelCreateValue = () => {
+    setCreatingKey(null);
+    setCreateValue('');
+  };
+
+  const submitCreateValue = async (row: DataValue) => {
+    if (!adminClient) return;
+    if (!createValue.trim()) {
+      setEditError('Value is required');
+      return;
+    }
+    setSavingCreateKey(row.geography_code);
+    setEditError('');
+    try {
+      const res = await adminClient.addData({
+        geography_code: row.geography_code,
+        indicator_code: row.indicator_code || selectedIndicator,
+        year: row.year,
+        value: Number(createValue),
+        gender: row.gender || 'all',
+        age_group: row.age_group || 'all',
+      });
+      const created = res.data.data;
+      const apply = (d: DataValue) =>
+        d.geography_code === row.geography_code ? { ...d, id: created.id, value: created.value, hasValue: true } : d;
+      setData((prev) => prev.map(apply));
+      setFilteredData((prev) => prev.map(apply));
+      setCreatingKey(null);
+      setCreateValue('');
+    } catch (err: any) {
+      setEditError(err.response?.data?.error?.message || 'Failed to add value');
+    } finally {
+      setSavingCreateKey(null);
     }
   };
 
@@ -1103,8 +1152,9 @@ export default function DataExplorer() {
                     ) : (
                       filteredData.map((d, i) => {
                         const isEditingRow = isAdmin && d.id != null && editingId === d.id;
+                        const isCreatingRow = isAdmin && d.id == null && creatingKey === d.geography_code;
                         return (
-                          <tr key={d.id ?? i} className="hover:bg-cam-panel/50 transition-colors">
+                          <tr key={d.id ?? `${d.geography_code}-${i}`} className="hover:bg-cam-panel/50 transition-colors">
                             <td className="p-3 font-medium text-white">{d.geography_name}</td>
                             <td className="p-3 text-cam-muted capitalize">{d.geography_level}</td>
                             <td className="p-3 text-cam-muted">{d.indicator_name}</td>
@@ -1113,6 +1163,13 @@ export default function DataExplorer() {
                                 <input
                                   value={editValue}
                                   onChange={(e) => setEditValue(e.target.value)}
+                                  className="bg-cam-ink border border-cam-line rounded px-2 py-1 text-xs text-white w-28 text-right focus:outline-none focus:border-cam-green"
+                                  autoFocus
+                                />
+                              ) : isCreatingRow ? (
+                                <input
+                                  value={createValue}
+                                  onChange={(e) => setCreateValue(e.target.value)}
                                   className="bg-cam-ink border border-cam-line rounded px-2 py-1 text-xs text-white w-28 text-right focus:outline-none focus:border-cam-green"
                                   autoFocus
                                 />
@@ -1126,7 +1183,40 @@ export default function DataExplorer() {
                             <td className="p-3 text-cam-muted">{d.year}</td>
                             {isAdmin && (
                               <td className="p-3 text-right">
-                                {d.id == null ? null : isEditingRow ? (
+                                {d.id == null ? (
+                                  isCreatingRow ? (
+                                    <div className="flex justify-end gap-2">
+                                      <button
+                                        onClick={() => submitCreateValue(d)}
+                                        disabled={savingCreateKey === d.geography_code}
+                                        className="inline-flex items-center gap-1 text-xs bg-cam-green/20 text-cam-green border border-cam-green/30 rounded-lg px-2 py-1 hover:bg-cam-green/30 disabled:opacity-40"
+                                      >
+                                        {savingCreateKey === d.geography_code ? (
+                                          <RefreshCw className="w-3 h-3 animate-spin" />
+                                        ) : (
+                                          <Save className="w-3 h-3" />
+                                        )}
+                                        Save
+                                      </button>
+                                      <button
+                                        onClick={cancelCreateValue}
+                                        disabled={savingCreateKey === d.geography_code}
+                                        className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white disabled:opacity-40"
+                                      >
+                                        <X className="w-3 h-3" />
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => startCreateValue(d)}
+                                      className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white hover:border-cam-green/40"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      Add
+                                    </button>
+                                  )
+                                ) : isEditingRow ? (
                                   <div className="flex justify-end gap-2">
                                     <button
                                       onClick={() => saveEditValue(d)}
