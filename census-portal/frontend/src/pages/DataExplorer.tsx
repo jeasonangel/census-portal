@@ -144,7 +144,7 @@ export default function DataExplorer() {
           setCurrentGeographyCode(defaultRegion.code);
           setCurrentGeographyName(defaultRegion.name);
           await loadDepartments(defaultRegion.code);
-          await loadData(defaultRegion.code, 'POP_TOT', CENSUS_YEAR);
+          await loadData(defaultRegion.code, 'POP_TOT', CENSUS_YEAR, defaultRegion.name, 'region');
         }
       } catch (err: any) {
         console.error('Failed to load initial data:', err);
@@ -254,7 +254,13 @@ export default function DataExplorer() {
     }
   };
 
-  const loadData = async (geographyCode: string, indicatorCode: string, year: number) => {
+  const loadData = async (
+    geographyCode: string,
+    indicatorCode: string,
+    year: number,
+    geographyName?: string,
+    level?: string
+  ) => {
     setLoading(true);
     try {
       let dataValues: DataValue[];
@@ -275,6 +281,27 @@ export default function DataExplorer() {
           : await publicApi.getData(geographyCode, indicatorCode, year);
         dataValues = response.data.data || [];
       }
+
+      if (dataValues.length === 0 && adminClient) {
+        // No figure yet for this geography/indicator/year — show a
+        // placeholder row with a Create action instead of a dead-end
+        // "no data" message, same as the villages breakdown table.
+        const ind = indicators.find((i) => i.code === indicatorCode);
+        dataValues = [
+          {
+            geography_code: geographyCode,
+            geography_name: geographyName ?? currentGeographyName,
+            geography_level: level ?? currentLevel,
+            indicator_code: indicatorCode,
+            indicator_name: ind?.name || indicatorCode,
+            unit: ind?.unit || '',
+            year,
+            value: 0,
+            hasValue: false,
+          },
+        ];
+      }
+
       setData(dataValues);
       setFilteredData(dataValues);
     } catch (err) {
@@ -490,7 +517,7 @@ export default function DataExplorer() {
     setAddingValue(false);
 
     await loadDepartments(regionCode);
-    await loadData(regionCode, selectedIndicator, selectedYear);
+    await loadData(regionCode, selectedIndicator, selectedYear, regionName, 'region');
   };
 
   const handleDepartmentSelect = async (deptCode: string, deptName: string) => {
@@ -506,7 +533,7 @@ export default function DataExplorer() {
     setAddingValue(false);
 
     await loadDistricts(deptCode);
-    await loadData(deptCode, selectedIndicator, selectedYear);
+    await loadData(deptCode, selectedIndicator, selectedYear, deptName, 'department');
   };
 
   const handleDistrictSelect = async (districtCode: string, districtName: string) => {
@@ -529,7 +556,7 @@ export default function DataExplorer() {
     setCurrentGeographyName(villageName);
     setCurrentLevel('village');
 
-    await loadData(villageCode, selectedIndicator, selectedYear);
+    await loadData(villageCode, selectedIndicator, selectedYear, villageName, 'village');
   };
 
   const goBack = () => {
@@ -549,7 +576,7 @@ export default function DataExplorer() {
         setCurrentGeographyCode(dept.code);
         setCurrentGeographyName(dept.name);
         setSelectedDistrict('');
-        loadData(dept.code, selectedIndicator, selectedYear);
+        loadData(dept.code, selectedIndicator, selectedYear, dept.name, 'department');
       }
     } else if (currentLevel === 'department') {
       const region = regions.find(r => r.code === selectedRegion);
@@ -558,7 +585,7 @@ export default function DataExplorer() {
         setCurrentGeographyCode(region.code);
         setCurrentGeographyName(region.name);
         setSelectedDepartment('');
-        loadData(region.code, selectedIndicator, selectedYear);
+        loadData(region.code, selectedIndicator, selectedYear, region.name, 'region');
       }
     }
   };
@@ -655,9 +682,10 @@ export default function DataExplorer() {
   const breadcrumbs = getBreadcrumbs();
 
   const handleExport = () => {
-    if (filteredData.length === 0) return;
+    const exportable = filteredData.filter(d => d.hasValue !== false);
+    if (exportable.length === 0) return;
     const headers = ['Geography', 'Level', 'Indicator', 'Value', 'Unit', 'Year'];
-    const rows = filteredData.map(d => [d.geography_name, d.geography_level, d.indicator_name, d.value, d.unit, d.year]);
+    const rows = exportable.map(d => [d.geography_name, d.geography_level, d.indicator_name, d.value, d.unit, d.year]);
     const csv = [headers, ...rows]
       .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
       .join('\n');
@@ -1020,7 +1048,7 @@ export default function DataExplorer() {
 
             <button
               onClick={handleExport}
-              disabled={filteredData.length === 0}
+              disabled={filteredData.every(d => d.hasValue === false)}
               className="btn-secondary flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Download className="w-4 h-4" />
