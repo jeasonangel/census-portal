@@ -221,7 +221,7 @@ export default function ApiKeyManager() {
                 You've used all {usage!.api_keys_limit} key{usage!.api_keys_limit === 1 ? '' : 's'} on the {usage!.plan} plan.
               </p>
               <p className="text-cam-muted text-sm mt-1">
-                Revoke an existing key to free up a slot, or upgrade to a paid plan for more keys.
+                upgrade to a paid plan for more keys.
               </p>
             </div>
           </div>
