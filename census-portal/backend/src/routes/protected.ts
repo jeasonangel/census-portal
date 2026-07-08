@@ -247,7 +247,7 @@ router.get('/districts/:code/villages', authenticateApiKey, async (req, res, nex
   try {
     const { code } = req.params;
     const { rows } = await query(
-      `SELECT v.name
+      `SELECT v.code, v.name, v.population
        FROM spatial_geo dist
        JOIN spatial_geo v ON v.parent_id = dist.id
        WHERE dist.code = $1 AND v.level = 'village'

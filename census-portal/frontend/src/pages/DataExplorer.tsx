@@ -34,6 +34,10 @@ interface DataValue {
   gender?: string;
   age_group?: string;
   source?: string | null;
+  // False only for synthetic placeholder rows (a village under the
+  // selected district with no figure yet) — lets the table show every
+  // village instead of silently skipping the ones with gaps.
+  hasValue?: boolean;
 }
 
 const CENSUS_YEAR = 2026;
@@ -175,18 +179,71 @@ export default function DataExplorer() {
     }
   };
 
-  const loadVillages = async (districtCode: string) => {
+  const loadVillages = async (districtCode: string): Promise<Geography[]> => {
     const source = adminClient || client;
     if (!source) {
       setVillages([]);
-      return;
+      return [];
     }
     try {
       const response = await source.getVillages(districtCode);
-      setVillages(response.data.data || []);
+      const list: Geography[] = response.data.data || [];
+      setVillages(list);
+      return list;
     } catch (err) {
       console.error('Failed to load villages:', err);
       setVillages([]);
+      return [];
+    }
+  };
+
+  // District level shows every village underneath it with its own
+  // value, instead of just the district's own aggregate figure — an
+  // admin (or anyone browsing) can see the full breakdown, and gaps
+  // (villages with no figure yet) show up as "No data" rows rather
+  // than silently vanishing.
+  const loadVillagesData = async (villageList: Geography[], indicatorCode: string, year: number) => {
+    setLoading(true);
+    try {
+      const results = await Promise.all(
+        villageList.map(async (v): Promise<DataValue[]> => {
+          try {
+            let rows: DataValue[] = [];
+            if (adminClient) {
+              const r = await adminClient.listData({ geography: v.code, indicator: indicatorCode, year, limit: 10 });
+              rows = r.data.data || [];
+            } else if (client) {
+              const r = await client.getData(v.code, indicatorCode, year);
+              rows = r.data.data || [];
+            } else {
+              const r = await publicApi.getData(v.code, indicatorCode, year);
+              rows = r.data.data || [];
+            }
+            if (rows.length > 0) return rows;
+          } catch (err) {
+            console.error(`Failed to load data for village ${v.code}:`, err);
+          }
+          const ind = indicators.find((i) => i.code === indicatorCode);
+          return [
+            {
+              geography_code: v.code,
+              geography_name: v.name,
+              geography_level: 'village',
+              indicator_code: indicatorCode,
+              indicator_name: ind?.name || indicatorCode,
+              unit: ind?.unit || '',
+              year,
+              value: 0,
+              hasValue: false,
+            },
+          ];
+        })
+      );
+      const merged = results.flat();
+      setData(merged);
+      setFilteredData(merged);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -293,9 +350,12 @@ export default function DataExplorer() {
       });
       if (addingLevel === 'department') await loadDepartments(selectedRegion);
       else if (addingLevel === 'district') await loadDistricts(selectedDepartment);
-      else if (addingLevel === 'village') await loadVillages(selectedDistrict);
+      else if (addingLevel === 'village') {
+        const villageList = await loadVillages(selectedDistrict);
+        await loadVillagesData(villageList, selectedIndicator, selectedYear);
+      }
       setAddingLevel(null);
-    setAddingValue(false);
+      setAddingValue(false);
     } catch (err: any) {
       setAddGeoError(err.response?.data?.error?.message || 'Failed to add');
     } finally {
@@ -392,8 +452,8 @@ export default function DataExplorer() {
     setAddingLevel(null);
     setAddingValue(false);
 
-    await loadVillages(districtCode);
-    await loadData(districtCode, selectedIndicator, selectedYear);
+    const villageList = await loadVillages(districtCode);
+    await loadVillagesData(villageList, selectedIndicator, selectedYear);
   };
 
   const handleVillageSelect = async (villageCode: string, villageName: string) => {
@@ -413,7 +473,7 @@ export default function DataExplorer() {
         setCurrentGeographyCode(district.code);
         setCurrentGeographyName(district.name);
         setSelectedVillage('');
-        loadData(district.code, selectedIndicator, selectedYear);
+        loadVillagesData(villages, selectedIndicator, selectedYear);
       }
     } else if (currentLevel === 'district') {
       const dept = departments.find(d => d.code === selectedDepartment);
@@ -446,6 +506,11 @@ export default function DataExplorer() {
       return;
     }
 
+    // No level filter here: `data` is already scoped to exactly the
+    // rows this view should show (the selected geography's own row,
+    // or — at district level — its villages), set by whichever loader
+    // populated it. Re-filtering by currentLevel would incorrectly
+    // drop the village rows shown while `currentLevel === 'district'`.
     let filtered = [...data];
 
     if (searchQuery.trim()) {
@@ -456,19 +521,18 @@ export default function DataExplorer() {
       );
     }
 
-    if (currentLevel) {
-      filtered = filtered.filter(d => d.geography_level === currentLevel);
-    }
-
     setFilteredData(filtered);
-  }, [data, searchQuery, currentLevel]);
+  }, [data, searchQuery]);
 
   // ============================================================
   // EFFECTS
   // ============================================================
 
   useEffect(() => {
-    if (currentGeographyCode) {
+    if (!currentGeographyCode) return;
+    if (currentLevel === 'district') {
+      loadVillagesData(villages, selectedIndicator, selectedYear);
+    } else {
       loadData(currentGeographyCode, selectedIndicator, selectedYear);
     }
   }, [selectedIndicator, selectedYear]);
@@ -896,7 +960,7 @@ export default function DataExplorer() {
               Export CSV
             </button>
 
-            {isAdmin && (
+            {isAdmin && currentLevel !== 'district' && (
               <button
                 onClick={startAddValue}
                 className="btn-secondary flex items-center gap-2"
@@ -1034,6 +1098,8 @@ export default function DataExplorer() {
                                   className="bg-cam-ink border border-cam-line rounded px-2 py-1 text-xs text-white w-28 text-right focus:outline-none focus:border-cam-green"
                                   autoFocus
                                 />
+                              ) : d.hasValue === false ? (
+                                <span className="text-cam-muted italic font-sans">No data</span>
                               ) : (
                                 Number(d.value).toLocaleString()
                               )}
@@ -1086,7 +1152,9 @@ export default function DataExplorer() {
 
               <div className="px-4 py-2 border-t border-cam-line flex justify-between items-center text-xs text-cam-muted">
                 <span>Showing {filteredData.length} of {data.length} records</span>
-                <span className="text-cam-yellow">{currentLevel} level data</span>
+                <span className="text-cam-yellow">
+                  {currentLevel === 'district' ? 'village' : currentLevel} level data
+                </span>
               </div>
             </div>
 
