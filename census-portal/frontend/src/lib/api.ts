@@ -78,7 +78,6 @@ export const adminApi = (token: string) => {
     listUpgradeRequests: () => client.get('/upgrade-requests'),
     resolveUpgradeRequest: (id: number, action: 'approve' | 'reject') =>
       client.patch(`/upgrade-requests/${id}`, { action }),
-    importData: (csv: string) => client.post('/import', { csv }),
     listData: (params: {
       geography?: string;
       indicator?: string;
@@ -91,6 +90,15 @@ export const adminApi = (token: string) => {
       id: number,
       fields: Partial<{ year: number; value: number; gender: string; age_group: string; source: string }>
     ) => client.patch(`/data/${id}`, fields),
+    addData: (data: {
+      geography_code: string;
+      indicator_code: string;
+      year: number;
+      value: number;
+      gender?: string;
+      age_group?: string;
+      source?: string;
+    }) => client.post('/data', data),
 
     // Full geography hierarchy + data access for the admin's own Data
     // Explorer view — no API key needed, JWT + ADMIN role is enough.

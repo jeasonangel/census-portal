@@ -1,8 +1,7 @@
 import { Router } from 'express';
-import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
 import { authenticateJWT, requireAdmin } from '../middleware/auth';
-import { query, pool } from '../db/pool';
+import { query } from '../db/pool';
 import { BadRequest, Conflict, NotFound } from '../utils/errors';
 import { PLAN_LIMITS } from '../config';
 
@@ -10,20 +9,6 @@ const router = Router();
 
 // All admin routes require a signed-in ADMIN account
 router.use(authenticateJWT, requireAdmin);
-
-// One data_values row per CSV row. geography_code/indicator_code must
-// already exist (this is a data-value import, not a way to define new
-// geographies or indicators); gender/age_group default to 'all' the
-// same way seed.ts's hand-authored rows do.
-const ImportRowSchema = z.object({
-  geography_code: z.string().trim().min(1),
-  indicator_code: z.string().trim().min(1),
-  year: z.coerce.number().int().min(1900).max(2100),
-  value: z.coerce.number(),
-  gender: z.string().trim().min(1).optional(),
-  age_group: z.string().trim().min(1).optional(),
-  source: z.string().trim().optional(),
-});
 
 // A new department/district/village must hang off an existing parent
 // one level up — this is what lets the geography tree stay a strict
@@ -176,6 +161,19 @@ const EditRowSchema = z
   })
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' });
 
+// A brand-new data_values row for a geography/indicator that doesn't
+// have a figure yet — geography_code/indicator_code must already
+// exist (this creates a data value, not a geography or indicator).
+const NewDataSchema = z.object({
+  geography_code: z.string().trim().min(1),
+  indicator_code: z.string().trim().min(1),
+  year: z.coerce.number().int().min(1900).max(2100),
+  value: z.coerce.number(),
+  gender: z.string().trim().min(1).optional(),
+  age_group: z.string().trim().min(1).optional(),
+  source: z.string().trim().optional(),
+});
+
 // ============================================================
 // GET /admin/regions/:code/departments - Sub-region hierarchy for the
 // admin data explorer. Mirrors /protected/regions/:code/departments,
@@ -244,7 +242,7 @@ router.get('/districts/:code/villages', async (req, res, next) => {
 // POST /admin/geography - Create a new department, district, or
 // village under an existing parent. Regions aren't creatable here —
 // Cameroon's 10 regions are fixed and seeded once. The new entry has
-// no data_values yet; use Import or Manage Data to add figures for it.
+// no data_values yet; use POST /admin/data to add figures for it.
 // ============================================================
 router.post('/geography', async (req, res, next) => {
   try {
@@ -294,10 +292,63 @@ router.post('/geography', async (req, res, next) => {
 });
 
 // ============================================================
+// POST /admin/data - Add a data value for a geography/indicator/year
+// that doesn't have one yet. Used from the Data Explorer when the
+// admin is looking at a geography with no figure for the currently
+// selected indicator/year.
+// ============================================================
+router.post('/data', async (req, res, next) => {
+  try {
+    const parsed = NewDataSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw BadRequest(parsed.error.issues.map((iss) => `${iss.path.join('.')}: ${iss.message}`).join('; '));
+    }
+    const { geography_code, indicator_code, year, value, gender, age_group, source } = parsed.data;
+
+    const geo = await query(`SELECT id FROM spatial_geo WHERE code = $1`, [geography_code]);
+    if (geo.rowCount === 0) {
+      throw BadRequest(`Unknown geography_code "${geography_code}"`);
+    }
+
+    const ind = await query(`SELECT id FROM indicators WHERE code = $1`, [indicator_code]);
+    if (ind.rowCount === 0) {
+      throw BadRequest(`Unknown indicator_code "${indicator_code}"`);
+    }
+
+    let rows;
+    try {
+      ({ rows } = await query(
+        `INSERT INTO data_values (geography_id, indicator_id, year, value, gender, age_group, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, geography_id, indicator_id, year, value, gender, age_group, source, last_updated`,
+        [
+          geo.rows[0].id,
+          ind.rows[0].id,
+          year,
+          value,
+          gender || 'all',
+          age_group || 'all',
+          source || null,
+        ]
+      ));
+    } catch (e: any) {
+      if (e.code === '23505') {
+        throw Conflict('A value already exists for that geography/indicator/year/gender/age_group — edit it instead');
+      }
+      throw e;
+    }
+
+    res.status(201).json({ data: rows[0] });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ============================================================
 // GET /admin/data - Search/browse individual data_values rows so an
-// admin can find one record to correct, instead of re-running a full
-// CSV import. Filterable by geography/indicator code, year, and a
-// free-text match on geography/indicator name.
+// admin can find one record to correct. Filterable by geography or
+// indicator code, year, and a free-text match on geography/indicator
+// name.
 // ============================================================
 router.get('/data', async (req, res, next) => {
   try {
@@ -401,108 +452,6 @@ router.patch('/data/:id', async (req, res, next) => {
     }
 
     res.json({ data: rows[0] });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// ============================================================
-// POST /admin/import - One-off manual CSV import of data_values.
-// No live BUCREP/INS connection; an admin pastes/uploads a CSV
-// export from wherever the source figures came from. Columns:
-// geography_code, indicator_code, year, value, [gender, age_group,
-// source]. Existing (geography, indicator, year, gender, age_group)
-// combos are overwritten; unknown codes are reported per-row rather
-// than failing the whole import.
-// ============================================================
-router.post('/import', async (req, res, next) => {
-  try {
-    const csv = typeof req.body.csv === 'string' ? req.body.csv : '';
-    if (!csv.trim()) {
-      throw BadRequest('csv (raw CSV text) is required');
-    }
-
-    let records: Record<string, string>[];
-    try {
-      records = parse(csv, { columns: true, skip_empty_lines: true, trim: true });
-    } catch (e: any) {
-      throw BadRequest(`Could not parse CSV: ${e.message}`);
-    }
-
-    if (records.length === 0) {
-      throw BadRequest('CSV has no data rows');
-    }
-
-    const errors: { row: number; message: string }[] = [];
-    let inserted = 0;
-    let updated = 0;
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      for (let i = 0; i < records.length; i++) {
-        const rowNum = i + 2; // +1 for 0-index, +1 for the header row
-        const parsed = ImportRowSchema.safeParse(records[i]);
-        if (!parsed.success) {
-          errors.push({
-            row: rowNum,
-            message: parsed.error.issues.map((iss) => `${iss.path.join('.')}: ${iss.message}`).join('; '),
-          });
-          continue;
-        }
-        const row = parsed.data;
-
-        const geo = await client.query(`SELECT id FROM spatial_geo WHERE code = $1`, [row.geography_code]);
-        if (geo.rowCount === 0) {
-          errors.push({ row: rowNum, message: `Unknown geography_code "${row.geography_code}"` });
-          continue;
-        }
-
-        const ind = await client.query(`SELECT id FROM indicators WHERE code = $1`, [row.indicator_code]);
-        if (ind.rowCount === 0) {
-          errors.push({ row: rowNum, message: `Unknown indicator_code "${row.indicator_code}"` });
-          continue;
-        }
-
-        const { rows: upserted } = await client.query(
-          `INSERT INTO data_values (geography_id, indicator_id, year, value, gender, age_group, source)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (geography_id, indicator_id, year, gender, age_group)
-           DO UPDATE SET value = EXCLUDED.value, source = EXCLUDED.source, last_updated = CURRENT_TIMESTAMP
-           RETURNING (xmax = 0) AS inserted`,
-          [
-            geo.rows[0].id,
-            ind.rows[0].id,
-            row.year,
-            row.value,
-            row.gender || 'all',
-            row.age_group || 'all',
-            row.source || 'Manual Import',
-          ]
-        );
-
-        if (upserted[0].inserted) inserted++;
-        else updated++;
-      }
-
-      await client.query('COMMIT');
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
-
-    res.json({
-      data: {
-        total_rows: records.length,
-        valid_rows: inserted + updated,
-        inserted,
-        updated,
-        errors,
-      },
-    });
   } catch (e) {
     next(e);
   }

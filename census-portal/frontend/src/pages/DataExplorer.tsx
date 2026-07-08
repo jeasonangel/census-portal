@@ -83,6 +83,16 @@ export default function DataExplorer() {
   const [addingGeo, setAddingGeo] = useState<boolean>(false);
   const [addGeoError, setAddGeoError] = useState<string>('');
 
+  // Add a data value for the currently selected geography/indicator/
+  // year (admin only) — used when that combination has no figure yet.
+  const [addingValue, setAddingValue] = useState<boolean>(false);
+  const [newValueAmount, setNewValueAmount] = useState<string>('');
+  const [newValueGender, setNewValueGender] = useState<string>('all');
+  const [newValueAgeGroup, setNewValueAgeGroup] = useState<string>('all');
+  const [newValueSource, setNewValueSource] = useState<string>('');
+  const [savingNewValue, setSavingNewValue] = useState<boolean>(false);
+  const [addValueError, setAddValueError] = useState<string>('');
+
   // Current level
   const [currentLevel, setCurrentLevel] = useState<'region' | 'department' | 'district' | 'village'>('region');
   const [currentGeographyCode, setCurrentGeographyCode] = useState<string>('CE');
@@ -185,9 +195,9 @@ export default function DataExplorer() {
     try {
       let dataValues: DataValue[];
       if (adminClient) {
-        // Admin path: same query the Manage Data page uses, which
-        // includes each row's id — that id is what makes the table
-        // below editable instead of just a read-only view.
+        // Admin path: the same search endpoint the admin API exposes,
+        // which includes each row's id — that id is what makes the
+        // table below editable instead of just a read-only view.
         const response = await adminClient.listData({
           geography: geographyCode,
           indicator: indicatorCode,
@@ -261,6 +271,7 @@ export default function DataExplorer() {
 
   const cancelAddGeo = () => {
     setAddingLevel(null);
+    setAddingValue(false);
     setAddGeoError('');
   };
 
@@ -284,10 +295,52 @@ export default function DataExplorer() {
       else if (addingLevel === 'district') await loadDistricts(selectedDepartment);
       else if (addingLevel === 'village') await loadVillages(selectedDistrict);
       setAddingLevel(null);
+    setAddingValue(false);
     } catch (err: any) {
       setAddGeoError(err.response?.data?.error?.message || 'Failed to add');
     } finally {
       setAddingGeo(false);
+    }
+  };
+
+  const startAddValue = () => {
+    setAddingValue(true);
+    setNewValueAmount('');
+    setNewValueGender('all');
+    setNewValueAgeGroup('all');
+    setNewValueSource('');
+    setAddValueError('');
+  };
+
+  const cancelAddValue = () => {
+    setAddingValue(false);
+    setAddValueError('');
+  };
+
+  const submitAddValue = async () => {
+    if (!adminClient) return;
+    if (!newValueAmount.trim()) {
+      setAddValueError('Value is required');
+      return;
+    }
+    setSavingNewValue(true);
+    setAddValueError('');
+    try {
+      await adminClient.addData({
+        geography_code: currentGeographyCode,
+        indicator_code: selectedIndicator,
+        year: selectedYear,
+        value: Number(newValueAmount),
+        gender: newValueGender.trim() || 'all',
+        age_group: newValueAgeGroup.trim() || 'all',
+        source: newValueSource.trim() || undefined,
+      });
+      await loadData(currentGeographyCode, selectedIndicator, selectedYear);
+      setAddingValue(false);
+    } catch (err: any) {
+      setAddValueError(err.response?.data?.error?.message || 'Failed to add value');
+    } finally {
+      setSavingNewValue(false);
     }
   };
 
@@ -307,6 +360,7 @@ export default function DataExplorer() {
     setDistricts([]);
     setVillages([]);
     setAddingLevel(null);
+    setAddingValue(false);
 
     await loadDepartments(regionCode);
     await loadData(regionCode, selectedIndicator, selectedYear);
@@ -322,6 +376,7 @@ export default function DataExplorer() {
     setDistricts([]);
     setVillages([]);
     setAddingLevel(null);
+    setAddingValue(false);
 
     await loadDistricts(deptCode);
     await loadData(deptCode, selectedIndicator, selectedYear);
@@ -335,6 +390,7 @@ export default function DataExplorer() {
     setSelectedVillage('');
     setVillages([]);
     setAddingLevel(null);
+    setAddingValue(false);
 
     await loadVillages(districtCode);
     await loadData(districtCode, selectedIndicator, selectedYear);
@@ -839,6 +895,16 @@ export default function DataExplorer() {
               <Download className="w-4 h-4" />
               Export CSV
             </button>
+
+            {isAdmin && (
+              <button
+                onClick={startAddValue}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Value
+              </button>
+            )}
           </div>
 
           {/* Content */}
@@ -853,6 +919,69 @@ export default function DataExplorer() {
           {editError && (
             <div className="bg-red-500/20 text-red-400 p-3 rounded-lg border border-red-500/20 text-sm">
               {editError}
+            </div>
+          )}
+
+          {addingValue && (
+            <div className="card space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-white">
+                <Plus className="w-4 h-4 text-cam-yellow" />
+                Add value for {currentGeographyName} — {currentIndicator?.name || selectedIndicator} ({selectedYear})
+              </div>
+              {addValueError && <div className="text-xs text-cam-red">{addValueError}</div>}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-xs text-cam-muted mb-1">Value</label>
+                  <input
+                    value={newValueAmount}
+                    onChange={(e) => setNewValueAmount(e.target.value)}
+                    autoFocus
+                    className="bg-cam-ink border border-cam-line rounded-lg px-3 py-1.5 text-sm text-white w-full focus:outline-none focus:border-cam-green"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-cam-muted mb-1">Gender</label>
+                  <input
+                    value={newValueGender}
+                    onChange={(e) => setNewValueGender(e.target.value)}
+                    className="bg-cam-ink border border-cam-line rounded-lg px-3 py-1.5 text-sm text-white w-full focus:outline-none focus:border-cam-green"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-cam-muted mb-1">Age group</label>
+                  <input
+                    value={newValueAgeGroup}
+                    onChange={(e) => setNewValueAgeGroup(e.target.value)}
+                    className="bg-cam-ink border border-cam-line rounded-lg px-3 py-1.5 text-sm text-white w-full focus:outline-none focus:border-cam-green"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-cam-muted mb-1">Source (optional)</label>
+                  <input
+                    value={newValueSource}
+                    onChange={(e) => setNewValueSource(e.target.value)}
+                    className="bg-cam-ink border border-cam-line rounded-lg px-3 py-1.5 text-sm text-white w-full focus:outline-none focus:border-cam-green"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={submitAddValue}
+                  disabled={savingNewValue}
+                  className="inline-flex items-center gap-2 text-sm bg-cam-green/20 text-cam-green border border-cam-green/30 rounded-lg px-3 py-1.5 hover:bg-cam-green/30 disabled:opacity-40"
+                >
+                  {savingNewValue ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Save
+                </button>
+                <button
+                  onClick={cancelAddValue}
+                  disabled={savingNewValue}
+                  className="inline-flex items-center gap-2 text-sm bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-3 py-1.5 hover:text-white disabled:opacity-40"
+                >
+                  <X className="w-4 h-4" />
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
 
