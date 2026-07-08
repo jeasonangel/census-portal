@@ -4,7 +4,7 @@ import Footer from './components/Footer';
 import Home from './pages/Home';
 import DataExplorer from './pages/DataExplorer';
 import ApiKeyManager from './pages/ApiKeyManager';
-import AdminUsers from './pages/AdminUsers';
+import AdminDashboard from './pages/AdminDashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import UpgradePlan from './pages/UpgradePlan';
@@ -21,7 +21,7 @@ export default function App() {
           <Route path="/api-keys" element={<ApiKeyManager />} />
           <Route path="/upgrade" element={<UpgradePlan />} />
           <Route path="/docs" element={<ApiDocs />} />
-          <Route path="/admin" element={<AdminUsers />} />
+          <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="*" element={<Navigate to="/" />} />
