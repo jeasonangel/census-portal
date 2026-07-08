@@ -183,25 +183,6 @@ function DataTab({ adminClient }: { adminClient: ReturnType<typeof adminApi> }) 
   const [addingGeo, setAddingGeo] = useState<boolean>(false);
   const [addGeoError, setAddGeoError] = useState<string>('');
 
-  useEffect(() => {
-    const loadInitialData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [regionsRes, indicatorsRes] = await Promise.all([
-          adminClient.listData({ limit: 1 }).catch(() => null), // warm nothing; regions come from public shape below
-          undefined,
-        ]);
-        void regionsRes;
-        void indicatorsRes;
-      } catch {
-        // no-op, real loads happen below
-      }
-    };
-    loadInitialData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Regions/indicators aren't admin-scoped resources — reuse the
   // public endpoints for the reference lists, then browse/edit
   // everything below region level via the admin API.
@@ -210,7 +191,6 @@ function DataTab({ adminClient }: { adminClient: ReturnType<typeof adminApi> }) 
       setLoading(true);
       setError(null);
       try {
-        const { publicApi } = await import('../lib/api');
         const [regionsRes, indicatorsRes] = await Promise.all([publicApi.getRegions(), publicApi.getIndicators()]);
         const regionList: Geography[] = regionsRes.data.data || [];
         setRegions(regionList);

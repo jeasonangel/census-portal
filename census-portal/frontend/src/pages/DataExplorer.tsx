@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { publicApi, protectedApi, adminApi, getStoredApiKey, getStoredToken, getStoredUser } from '../lib/api';
+import { publicApi, protectedApi, getStoredApiKey } from '../lib/api';
 import {
   Search, Download, MapPin, Database, ChevronRight, ChevronDown,
-  Info, SlidersHorizontal, X, Key, Lock, Pencil, Save, RefreshCw, ShieldCheck, Plus, Trash2,
+  Info, SlidersHorizontal, X, Key, Lock,
 } from 'lucide-react';
 
 interface Geography {
@@ -22,18 +22,13 @@ interface Indicator {
 }
 
 interface DataValue {
-  id?: number;
   geography_code: string;
   geography_name: string;
   geography_level: string;
-  indicator_code?: string;
   indicator_name: string;
   unit: string;
   year: number;
   value: number;
-  gender?: string;
-  age_group?: string;
-  source?: string | null;
   // False only for synthetic placeholder rows (a village under the
   // selected district with no figure yet) — lets the table show every
   // village instead of silently skipping the ones with gaps.
@@ -72,53 +67,14 @@ export default function DataExplorer() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Inline editing (admin only)
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editValue, setEditValue] = useState<string>('');
-  const [savingId, setSavingId] = useState<number | null>(null);
-  const [editError, setEditError] = useState<string>('');
-
-  // Inline "create" for a row that has no data yet (admin only) — most
-  // rows in the villages breakdown table start this way. Keyed by
-  // geography_code since these placeholder rows have no id yet.
-  const [creatingKey, setCreatingKey] = useState<string | null>(null);
-  const [createValue, setCreateValue] = useState<string>('');
-  const [savingCreateKey, setSavingCreateKey] = useState<string | null>(null);
-
-  // Add department/district/village (admin only) — at most one "add"
-  // form open at a time, scoped to whichever level it was opened for.
-  const [addingLevel, setAddingLevel] = useState<'department' | 'district' | 'village' | null>(null);
-  const [newGeoCode, setNewGeoCode] = useState<string>('');
-  const [newGeoName, setNewGeoName] = useState<string>('');
-  const [newGeoPopulation, setNewGeoPopulation] = useState<string>('');
-  const [addingGeo, setAddingGeo] = useState<boolean>(false);
-  const [addGeoError, setAddGeoError] = useState<string>('');
-
-  // Add a data value for the currently selected geography/indicator/
-  // year (admin only) — used when that combination has no figure yet.
-  const [addingValue, setAddingValue] = useState<boolean>(false);
-  const [newValueAmount, setNewValueAmount] = useState<string>('');
-  const [newValueGender, setNewValueGender] = useState<string>('all');
-  const [newValueAgeGroup, setNewValueAgeGroup] = useState<string>('all');
-  const [newValueSource, setNewValueSource] = useState<string>('');
-  const [savingNewValue, setSavingNewValue] = useState<boolean>(false);
-  const [addValueError, setAddValueError] = useState<string>('');
-
   // Current level
   const [currentLevel, setCurrentLevel] = useState<'region' | 'department' | 'district' | 'village'>('region');
   const [currentGeographyCode, setCurrentGeographyCode] = useState<string>('CE');
   const [currentGeographyName, setCurrentGeographyName] = useState<string>('Centre');
 
-  // Department/district/village drill-down normally requires an API
-  // key — the public API only serves region-level data. An admin is
-  // signed in with a JWT already, so they get full-hierarchy browsing
-  // (and inline editing) without needing to also hold a personal key.
-  const user = getStoredUser();
-  const token = getStoredToken();
-  const isAdmin = user?.user_type === 'ADMIN';
-  const adminClient = isAdmin && token ? adminApi(token) : null;
-  const canBrowseHierarchy = !!adminClient || !!getStoredApiKey();
-
+  // Department/district/village drill-down requires an API key — the
+  // public API only serves region-level data. Anonymous visitors get
+  // region browsing only, with a prompt to sign in for the rest.
   const apiKey = getStoredApiKey();
   const client = apiKey ? protectedApi(apiKey) : null;
 
@@ -144,7 +100,7 @@ export default function DataExplorer() {
           setCurrentGeographyCode(defaultRegion.code);
           setCurrentGeographyName(defaultRegion.name);
           await loadDepartments(defaultRegion.code);
-          await loadData(defaultRegion.code, 'POP_TOT', CENSUS_YEAR, defaultRegion.name, 'region');
+          await loadData(defaultRegion.code, 'POP_TOT', CENSUS_YEAR);
         }
       } catch (err: any) {
         console.error('Failed to load initial data:', err);
@@ -157,13 +113,12 @@ export default function DataExplorer() {
   }, []);
 
   const loadDepartments = async (regionCode: string) => {
-    const source = adminClient || client;
-    if (!source) {
+    if (!client) {
       setDepartments([]);
       return;
     }
     try {
-      const response = await source.getDepartments(regionCode);
+      const response = await client.getDepartments(regionCode);
       setDepartments(response.data.data || []);
     } catch (err) {
       console.error('Failed to load departments:', err);
@@ -172,13 +127,12 @@ export default function DataExplorer() {
   };
 
   const loadDistricts = async (deptCode: string) => {
-    const source = adminClient || client;
-    if (!source) {
+    if (!client) {
       setDistricts([]);
       return;
     }
     try {
-      const response = await source.getDistricts(deptCode);
+      const response = await client.getDistricts(deptCode);
       setDistricts(response.data.data || []);
     } catch (err) {
       console.error('Failed to load districts:', err);
@@ -187,13 +141,12 @@ export default function DataExplorer() {
   };
 
   const loadVillages = async (districtCode: string): Promise<Geography[]> => {
-    const source = adminClient || client;
-    if (!source) {
+    if (!client) {
       setVillages([]);
       return [];
     }
     try {
-      const response = await source.getVillages(districtCode);
+      const response = await client.getVillages(districtCode);
       const list: Geography[] = response.data.data || [];
       setVillages(list);
       return list;
@@ -205,8 +158,7 @@ export default function DataExplorer() {
   };
 
   // District level shows every village underneath it with its own
-  // value, instead of just the district's own aggregate figure — an
-  // admin (or anyone browsing) can see the full breakdown, and gaps
+  // value, instead of just the district's own aggregate figure — gaps
   // (villages with no figure yet) show up as "No data" rows rather
   // than silently vanishing.
   const loadVillagesData = async (villageList: Geography[], indicatorCode: string, year: number) => {
@@ -215,17 +167,10 @@ export default function DataExplorer() {
       const results = await Promise.all(
         villageList.map(async (v): Promise<DataValue[]> => {
           try {
-            let rows: DataValue[] = [];
-            if (adminClient) {
-              const r = await adminClient.listData({ geography: v.code, indicator: indicatorCode, year, limit: 10 });
-              rows = r.data.data || [];
-            } else if (client) {
-              const r = await client.getData(v.code, indicatorCode, year);
-              rows = r.data.data || [];
-            } else {
-              const r = await publicApi.getData(v.code, indicatorCode, year);
-              rows = r.data.data || [];
-            }
+            const r = client
+              ? await client.getData(v.code, indicatorCode, year)
+              : await publicApi.getData(v.code, indicatorCode, year);
+            const rows: DataValue[] = r.data.data || [];
             if (rows.length > 0) return rows;
           } catch (err) {
             console.error(`Failed to load data for village ${v.code}:`, err);
@@ -236,7 +181,6 @@ export default function DataExplorer() {
               geography_code: v.code,
               geography_name: v.name,
               geography_level: 'village',
-              indicator_code: indicatorCode,
               indicator_name: ind?.name || indicatorCode,
               unit: ind?.unit || '',
               year,
@@ -254,54 +198,13 @@ export default function DataExplorer() {
     }
   };
 
-  const loadData = async (
-    geographyCode: string,
-    indicatorCode: string,
-    year: number,
-    geographyName?: string,
-    level?: string
-  ) => {
+  const loadData = async (geographyCode: string, indicatorCode: string, year: number) => {
     setLoading(true);
     try {
-      let dataValues: DataValue[];
-      if (adminClient) {
-        // Admin path: the same search endpoint the admin API exposes,
-        // which includes each row's id — that id is what makes the
-        // table below editable instead of just a read-only view.
-        const response = await adminClient.listData({
-          geography: geographyCode,
-          indicator: indicatorCode,
-          year,
-          limit: 100,
-        });
-        dataValues = response.data.data || [];
-      } else {
-        const response = client
-          ? await client.getData(geographyCode, indicatorCode, year)
-          : await publicApi.getData(geographyCode, indicatorCode, year);
-        dataValues = response.data.data || [];
-      }
-
-      if (dataValues.length === 0 && adminClient) {
-        // No figure yet for this geography/indicator/year — show a
-        // placeholder row with a Create action instead of a dead-end
-        // "no data" message, same as the villages breakdown table.
-        const ind = indicators.find((i) => i.code === indicatorCode);
-        dataValues = [
-          {
-            geography_code: geographyCode,
-            geography_name: geographyName ?? currentGeographyName,
-            geography_level: level ?? currentLevel,
-            indicator_code: indicatorCode,
-            indicator_name: ind?.name || indicatorCode,
-            unit: ind?.unit || '',
-            year,
-            value: 0,
-            hasValue: false,
-          },
-        ];
-      }
-
+      const response = client
+        ? await client.getData(geographyCode, indicatorCode, year)
+        : await publicApi.getData(geographyCode, indicatorCode, year);
+      const dataValues = response.data.data || [];
       setData(dataValues);
       setFilteredData(dataValues);
     } catch (err) {
@@ -310,191 +213,6 @@ export default function DataExplorer() {
       setFilteredData([]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const startEditValue = (row: DataValue) => {
-    if (row.id == null) return;
-    setEditingId(row.id);
-    setEditValue(String(row.value));
-    setEditError('');
-  };
-
-  const cancelEditValue = () => {
-    setEditingId(null);
-    setEditValue('');
-  };
-
-  const saveEditValue = async (row: DataValue) => {
-    if (!adminClient || row.id == null) return;
-    setSavingId(row.id);
-    setEditError('');
-    try {
-      const res = await adminClient.updateData(row.id, { value: Number(editValue) });
-      const updatedValue = res.data.data.value;
-      setData((prev) => prev.map((d) => (d.id === row.id ? { ...d, value: updatedValue } : d)));
-      setFilteredData((prev) => prev.map((d) => (d.id === row.id ? { ...d, value: updatedValue } : d)));
-      setEditingId(null);
-    } catch (err: any) {
-      setEditError(err.response?.data?.error?.message || 'Failed to save changes');
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const deleteValue = async (row: DataValue) => {
-    if (!adminClient || row.id == null) return;
-    if (!window.confirm(`Delete this ${row.indicator_name} value for ${row.geography_name}? This cannot be undone.`)) {
-      return;
-    }
-    setSavingId(row.id);
-    setEditError('');
-    try {
-      await adminClient.deleteData(row.id);
-      setData((prev) => prev.filter((d) => d.id !== row.id));
-      setFilteredData((prev) => prev.filter((d) => d.id !== row.id));
-    } catch (err: any) {
-      setEditError(err.response?.data?.error?.message || 'Failed to delete value');
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const startCreateValue = (row: DataValue) => {
-    setCreatingKey(row.geography_code);
-    setCreateValue('');
-    setEditError('');
-  };
-
-  const cancelCreateValue = () => {
-    setCreatingKey(null);
-    setCreateValue('');
-  };
-
-  const submitCreateValue = async (row: DataValue) => {
-    if (!adminClient) return;
-    if (!createValue.trim()) {
-      setEditError('Value is required');
-      return;
-    }
-    setSavingCreateKey(row.geography_code);
-    setEditError('');
-    try {
-      const res = await adminClient.addData({
-        geography_code: row.geography_code,
-        indicator_code: row.indicator_code || selectedIndicator,
-        year: row.year,
-        value: Number(createValue),
-        gender: row.gender || 'all',
-        age_group: row.age_group || 'all',
-      });
-      const created = res.data.data;
-      const apply = (d: DataValue) =>
-        d.geography_code === row.geography_code ? { ...d, id: created.id, value: created.value, hasValue: true } : d;
-      setData((prev) => prev.map(apply));
-      setFilteredData((prev) => prev.map(apply));
-      setCreatingKey(null);
-      setCreateValue('');
-    } catch (err: any) {
-      setEditError(err.response?.data?.error?.message || 'Failed to add value');
-    } finally {
-      setSavingCreateKey(null);
-    }
-  };
-
-  // Parent code for whichever level the "add" form is currently open
-  // for — a new department hangs off the selected region, a new
-  // district off the selected department, a new village off the
-  // selected district.
-  const addGeoParentCode =
-    addingLevel === 'department' ? selectedRegion
-    : addingLevel === 'district' ? selectedDepartment
-    : addingLevel === 'village' ? selectedDistrict
-    : '';
-
-  const startAddGeo = (level: 'department' | 'district' | 'village') => {
-    setAddingLevel(level);
-    setNewGeoCode('');
-    setNewGeoName('');
-    setNewGeoPopulation('');
-    setAddGeoError('');
-  };
-
-  const cancelAddGeo = () => {
-    setAddingLevel(null);
-    setAddingValue(false);
-    setAddGeoError('');
-  };
-
-  const submitAddGeo = async () => {
-    if (!adminClient || !addingLevel || !addGeoParentCode) return;
-    if (!newGeoCode.trim() || !newGeoName.trim()) {
-      setAddGeoError('Code and name are required');
-      return;
-    }
-    setAddingGeo(true);
-    setAddGeoError('');
-    try {
-      await adminClient.addGeography({
-        code: newGeoCode.trim().toUpperCase(),
-        name: newGeoName.trim(),
-        level: addingLevel,
-        parent_code: addGeoParentCode,
-        population: newGeoPopulation.trim() ? Number(newGeoPopulation.trim()) : undefined,
-      });
-      if (addingLevel === 'department') await loadDepartments(selectedRegion);
-      else if (addingLevel === 'district') await loadDistricts(selectedDepartment);
-      else if (addingLevel === 'village') {
-        const villageList = await loadVillages(selectedDistrict);
-        await loadVillagesData(villageList, selectedIndicator, selectedYear);
-      }
-      setAddingLevel(null);
-      setAddingValue(false);
-    } catch (err: any) {
-      setAddGeoError(err.response?.data?.error?.message || 'Failed to add');
-    } finally {
-      setAddingGeo(false);
-    }
-  };
-
-  const startAddValue = () => {
-    setAddingValue(true);
-    setNewValueAmount('');
-    setNewValueGender('all');
-    setNewValueAgeGroup('all');
-    setNewValueSource('');
-    setAddValueError('');
-  };
-
-  const cancelAddValue = () => {
-    setAddingValue(false);
-    setAddValueError('');
-  };
-
-  const submitAddValue = async () => {
-    if (!adminClient) return;
-    if (!newValueAmount.trim()) {
-      setAddValueError('Value is required');
-      return;
-    }
-    setSavingNewValue(true);
-    setAddValueError('');
-    try {
-      await adminClient.addData({
-        geography_code: currentGeographyCode,
-        indicator_code: selectedIndicator,
-        year: selectedYear,
-        value: Number(newValueAmount),
-        gender: newValueGender.trim() || 'all',
-        age_group: newValueAgeGroup.trim() || 'all',
-        source: newValueSource.trim() || undefined,
-      });
-      await loadData(currentGeographyCode, selectedIndicator, selectedYear);
-      setAddingValue(false);
-    } catch (err: any) {
-      setAddValueError(err.response?.data?.error?.message || 'Failed to add value');
-    } finally {
-      setSavingNewValue(false);
     }
   };
 
@@ -513,11 +231,9 @@ export default function DataExplorer() {
     setDepartments([]);
     setDistricts([]);
     setVillages([]);
-    setAddingLevel(null);
-    setAddingValue(false);
 
     await loadDepartments(regionCode);
-    await loadData(regionCode, selectedIndicator, selectedYear, regionName, 'region');
+    await loadData(regionCode, selectedIndicator, selectedYear);
   };
 
   const handleDepartmentSelect = async (deptCode: string, deptName: string) => {
@@ -529,11 +245,9 @@ export default function DataExplorer() {
     setSelectedVillage('');
     setDistricts([]);
     setVillages([]);
-    setAddingLevel(null);
-    setAddingValue(false);
 
     await loadDistricts(deptCode);
-    await loadData(deptCode, selectedIndicator, selectedYear, deptName, 'department');
+    await loadData(deptCode, selectedIndicator, selectedYear);
   };
 
   const handleDistrictSelect = async (districtCode: string, districtName: string) => {
@@ -543,8 +257,6 @@ export default function DataExplorer() {
     setCurrentLevel('district');
     setSelectedVillage('');
     setVillages([]);
-    setAddingLevel(null);
-    setAddingValue(false);
 
     const villageList = await loadVillages(districtCode);
     await loadVillagesData(villageList, selectedIndicator, selectedYear);
@@ -556,7 +268,7 @@ export default function DataExplorer() {
     setCurrentGeographyName(villageName);
     setCurrentLevel('village');
 
-    await loadData(villageCode, selectedIndicator, selectedYear, villageName, 'village');
+    await loadData(villageCode, selectedIndicator, selectedYear);
   };
 
   const goBack = () => {
@@ -576,7 +288,7 @@ export default function DataExplorer() {
         setCurrentGeographyCode(dept.code);
         setCurrentGeographyName(dept.name);
         setSelectedDistrict('');
-        loadData(dept.code, selectedIndicator, selectedYear, dept.name, 'department');
+        loadData(dept.code, selectedIndicator, selectedYear);
       }
     } else if (currentLevel === 'department') {
       const region = regions.find(r => r.code === selectedRegion);
@@ -585,7 +297,7 @@ export default function DataExplorer() {
         setCurrentGeographyCode(region.code);
         setCurrentGeographyName(region.name);
         setSelectedDepartment('');
-        loadData(region.code, selectedIndicator, selectedYear, region.name, 'region');
+        loadData(region.code, selectedIndicator, selectedYear);
       }
     }
   };
@@ -703,68 +415,6 @@ export default function DataExplorer() {
       active ? 'bg-cam-green/20 text-cam-yellow font-medium' : 'text-cam-muted hover:bg-cam-panel hover:text-white'
     }`;
 
-  // Admin-only "+ Add <level>" affordance shown at the bottom of a
-  // geography tree section. Renders either the trigger button or the
-  // inline code/name/population form, depending on whether this is
-  // the level currently being added to.
-  const renderAddGeo = (level: 'department' | 'district' | 'village', label: string) => {
-    if (!isAdmin) return null;
-
-    if (addingLevel !== level) {
-      return (
-        <button
-          onClick={() => startAddGeo(level)}
-          className="w-full flex items-center gap-1.5 text-left px-2 py-1.5 rounded text-xs text-cam-yellow/80 hover:text-cam-yellow hover:bg-cam-panel transition-colors"
-        >
-          <Plus className="w-3 h-3" />
-          Add {label}
-        </button>
-      );
-    }
-
-    return (
-      <div className="px-2 py-2 space-y-1.5 bg-cam-ink rounded border border-cam-line mt-1">
-        {addGeoError && <div className="text-xs text-cam-red">{addGeoError}</div>}
-        <input
-          value={newGeoCode}
-          onChange={(e) => setNewGeoCode(e.target.value)}
-          placeholder="Code (e.g. NEW1)"
-          className="w-full bg-cam-panel border border-cam-line rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cam-green"
-        />
-        <input
-          value={newGeoName}
-          onChange={(e) => setNewGeoName(e.target.value)}
-          placeholder={`${label} name`}
-          className="w-full bg-cam-panel border border-cam-line rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cam-green"
-        />
-        <input
-          value={newGeoPopulation}
-          onChange={(e) => setNewGeoPopulation(e.target.value)}
-          placeholder="Population (optional)"
-          className="w-full bg-cam-panel border border-cam-line rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cam-green"
-        />
-        <div className="flex justify-end gap-2 pt-0.5">
-          <button
-            onClick={submitAddGeo}
-            disabled={addingGeo}
-            className="inline-flex items-center gap-1 text-xs bg-cam-green/20 text-cam-green border border-cam-green/30 rounded px-2 py-1 hover:bg-cam-green/30 disabled:opacity-40"
-          >
-            {addingGeo ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-            Save
-          </button>
-          <button
-            onClick={cancelAddGeo}
-            disabled={addingGeo}
-            className="inline-flex items-center gap-1 text-xs bg-cam-panel text-cam-muted border border-cam-line rounded px-2 py-1 hover:text-white disabled:opacity-40"
-          >
-            <X className="w-3 h-3" />
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   // ============================================================
   // RENDER
   // ============================================================
@@ -847,7 +497,7 @@ export default function DataExplorer() {
 
                   {region.code === selectedRegion && (
                     <div className="ml-3 border-l border-cam-line pl-1">
-                      {!canBrowseHierarchy ? (
+                      {!apiKey ? (
                         <div className="flex items-start gap-1.5 text-xs text-cam-muted px-2 py-1.5">
                           <Lock className="w-3 h-3 shrink-0 mt-0.5" />
                           <span>
@@ -903,17 +553,14 @@ export default function DataExplorer() {
                                           <span className="truncate">{v.name}</span>
                                         </button>
                                       ))}
-                                      {renderAddGeo('village', 'village')}
                                     </div>
                                   )}
                                 </div>
                               ))}
-                              {renderAddGeo('district', 'district')}
                             </div>
                           )}
                         </div>
                       ))}
-                      {renderAddGeo('department', 'department')}
                     </div>
                   )}
                 </div>
@@ -1054,96 +701,9 @@ export default function DataExplorer() {
               <Download className="w-4 h-4" />
               Export CSV
             </button>
-
-            {isAdmin && currentLevel !== 'district' && (
-              <button
-                onClick={startAddValue}
-                className="btn-secondary flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Add Value
-              </button>
-            )}
           </div>
 
           {/* Content */}
-          {isAdmin && (
-            <div className="flex items-start gap-2 text-xs text-cam-yellow bg-cam-yellow/10 border border-cam-yellow/20 rounded-lg px-3 py-2">
-              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>
-                Admin mode — Changes save immediately
-              </span>
-            </div>
-          )}
-          {editError && (
-            <div className="bg-red-500/20 text-red-400 p-3 rounded-lg border border-red-500/20 text-sm">
-              {editError}
-            </div>
-          )}
-
-          {addingValue && (
-            <div className="card space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-white">
-                <Plus className="w-4 h-4 text-cam-yellow" />
-                Add value for {currentGeographyName} — {currentIndicator?.name || selectedIndicator} ({selectedYear})
-              </div>
-              {addValueError && <div className="text-xs text-cam-red">{addValueError}</div>}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs text-cam-muted mb-1">Value</label>
-                  <input
-                    value={newValueAmount}
-                    onChange={(e) => setNewValueAmount(e.target.value)}
-                    autoFocus
-                    className="bg-cam-ink border border-cam-line rounded-lg px-3 py-1.5 text-sm text-white w-full focus:outline-none focus:border-cam-green"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-cam-muted mb-1">Gender</label>
-                  <input
-                    value={newValueGender}
-                    onChange={(e) => setNewValueGender(e.target.value)}
-                    className="bg-cam-ink border border-cam-line rounded-lg px-3 py-1.5 text-sm text-white w-full focus:outline-none focus:border-cam-green"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-cam-muted mb-1">Age group</label>
-                  <input
-                    value={newValueAgeGroup}
-                    onChange={(e) => setNewValueAgeGroup(e.target.value)}
-                    className="bg-cam-ink border border-cam-line rounded-lg px-3 py-1.5 text-sm text-white w-full focus:outline-none focus:border-cam-green"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-cam-muted mb-1">Source (optional)</label>
-                  <input
-                    value={newValueSource}
-                    onChange={(e) => setNewValueSource(e.target.value)}
-                    className="bg-cam-ink border border-cam-line rounded-lg px-3 py-1.5 text-sm text-white w-full focus:outline-none focus:border-cam-green"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={submitAddValue}
-                  disabled={savingNewValue}
-                  className="inline-flex items-center gap-2 text-sm bg-cam-green/20 text-cam-green border border-cam-green/30 rounded-lg px-3 py-1.5 hover:bg-cam-green/30 disabled:opacity-40"
-                >
-                  {savingNewValue ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Save
-                </button>
-                <button
-                  onClick={cancelAddValue}
-                  disabled={savingNewValue}
-                  className="inline-flex items-center gap-2 text-sm bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-3 py-1.5 hover:text-white disabled:opacity-40"
-                >
-                  <X className="w-4 h-4" />
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
           <div className="card overflow-hidden p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -1155,15 +715,12 @@ export default function DataExplorer() {
                       <th className="text-right p-3 text-cam-muted text-xs uppercase font-medium">Value</th>
                       <th className="text-left p-3 text-cam-muted text-xs uppercase font-medium">Unit</th>
                       <th className="text-left p-3 text-cam-muted text-xs uppercase font-medium">Year</th>
-                      {isAdmin && (
-                        <th className="text-right p-3 text-cam-muted text-xs uppercase font-medium">Action</th>
-                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-cam-line">
                     {loading ? (
                       <tr>
-                        <td colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-cam-muted">
+                        <td colSpan={6} className="text-center py-8 text-cam-muted">
                           <div className="flex justify-center items-center gap-2">
                             <span className="animate-spin rounded-full h-4 w-4 border-2 border-cam-green border-t-transparent"></span>
                             Loading...
@@ -1172,125 +729,28 @@ export default function DataExplorer() {
                       </tr>
                     ) : filteredData.length === 0 ? (
                       <tr>
-                        <td colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-cam-muted">
+                        <td colSpan={6} className="text-center py-8 text-cam-muted">
                           <Database className="w-8 h-8 mx-auto mb-2 opacity-30" />
                           No data found for this selection
                         </td>
                       </tr>
                     ) : (
-                      filteredData.map((d, i) => {
-                        const isEditingRow = isAdmin && d.id != null && editingId === d.id;
-                        const isCreatingRow = isAdmin && d.id == null && creatingKey === d.geography_code;
-                        return (
-                          <tr key={d.id ?? `${d.geography_code}-${i}`} className="hover:bg-cam-panel/50 transition-colors">
-                            <td className="p-3 font-medium text-white">{d.geography_name}</td>
-                            <td className="p-3 text-cam-muted capitalize">{d.geography_level}</td>
-                            <td className="p-3 text-cam-muted">{d.indicator_name}</td>
-                            <td className="p-3 text-right font-mono text-cam-green">
-                              {isEditingRow ? (
-                                <input
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  className="bg-cam-ink border border-cam-line rounded px-2 py-1 text-xs text-white w-28 text-right focus:outline-none focus:border-cam-green"
-                                  autoFocus
-                                />
-                              ) : isCreatingRow ? (
-                                <input
-                                  value={createValue}
-                                  onChange={(e) => setCreateValue(e.target.value)}
-                                  className="bg-cam-ink border border-cam-line rounded px-2 py-1 text-xs text-white w-28 text-right focus:outline-none focus:border-cam-green"
-                                  autoFocus
-                                />
-                              ) : d.hasValue === false ? (
-                                <span className="text-cam-muted italic font-sans">No data</span>
-                              ) : (
-                                Number(d.value).toLocaleString()
-                              )}
-                            </td>
-                            <td className="p-3 text-cam-muted text-xs">{d.unit}</td>
-                            <td className="p-3 text-cam-muted">{d.year}</td>
-                            {isAdmin && (
-                              <td className="p-3 text-right">
-                                {d.id == null ? (
-                                  isCreatingRow ? (
-                                    <div className="flex justify-end gap-2">
-                                      <button
-                                        onClick={() => submitCreateValue(d)}
-                                        disabled={savingCreateKey === d.geography_code}
-                                        className="inline-flex items-center gap-1 text-xs bg-cam-green/20 text-cam-green border border-cam-green/30 rounded-lg px-2 py-1 hover:bg-cam-green/30 disabled:opacity-40"
-                                      >
-                                        {savingCreateKey === d.geography_code ? (
-                                          <RefreshCw className="w-3 h-3 animate-spin" />
-                                        ) : (
-                                          <Save className="w-3 h-3" />
-                                        )}
-                                        Save
-                                      </button>
-                                      <button
-                                        onClick={cancelCreateValue}
-                                        disabled={savingCreateKey === d.geography_code}
-                                        className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white disabled:opacity-40"
-                                      >
-                                        <X className="w-3 h-3" />
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => startCreateValue(d)}
-                                      className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white hover:border-cam-green/40"
-                                    >
-                                      <Plus className="w-3 h-3" />
-                                      Add
-                                    </button>
-                                  )
-                                ) : isEditingRow ? (
-                                  <div className="flex justify-end gap-2">
-                                    <button
-                                      onClick={() => saveEditValue(d)}
-                                      disabled={savingId === d.id}
-                                      className="inline-flex items-center gap-1 text-xs bg-cam-green/20 text-cam-green border border-cam-green/30 rounded-lg px-2 py-1 hover:bg-cam-green/30 disabled:opacity-40"
-                                    >
-                                      {savingId === d.id ? (
-                                        <RefreshCw className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <Save className="w-3 h-3" />
-                                      )}
-                                      Save
-                                    </button>
-                                    <button
-                                      onClick={cancelEditValue}
-                                      disabled={savingId === d.id}
-                                      className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white disabled:opacity-40"
-                                    >
-                                      <X className="w-3 h-3" />
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <div className="flex justify-end gap-2">
-                                    <button
-                                      onClick={() => startEditValue(d)}
-                                      className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white hover:border-cam-yellow/40"
-                                    >
-                                      <Pencil className="w-3 h-3" />
-                                      Edit
-                                    </button>
-                                    <button
-                                      onClick={() => deleteValue(d)}
-                                      disabled={savingId === d.id}
-                                      className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-cam-red hover:border-cam-red/40 disabled:opacity-40"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                      Delete
-                                    </button>
-                                  </div>
-                                )}
-                              </td>
+                      filteredData.map((d, i) => (
+                        <tr key={i} className="hover:bg-cam-panel/50 transition-colors">
+                          <td className="p-3 font-medium text-white">{d.geography_name}</td>
+                          <td className="p-3 text-cam-muted capitalize">{d.geography_level}</td>
+                          <td className="p-3 text-cam-muted">{d.indicator_name}</td>
+                          <td className="p-3 text-right font-mono text-cam-green">
+                            {d.hasValue === false ? (
+                              <span className="text-cam-muted italic font-sans">No data</span>
+                            ) : (
+                              Number(d.value).toLocaleString()
                             )}
-                          </tr>
-                        );
-                      })
+                          </td>
+                          <td className="p-3 text-cam-muted text-xs">{d.unit}</td>
+                          <td className="p-3 text-cam-muted">{d.year}</td>
+                        </tr>
+                      ))
                     )}
                   </tbody>
                 </table>
