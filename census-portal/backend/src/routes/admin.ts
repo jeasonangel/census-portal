@@ -457,4 +457,26 @@ router.patch('/data/:id', async (req, res, next) => {
   }
 });
 
+// ============================================================
+// DELETE /admin/data/:id - Remove a single data_values row entirely
+// (e.g. one entered by mistake). Since /public and /protected data
+// endpoints read straight from this table, the row disappears from
+// those responses immediately.
+// ============================================================
+router.delete('/data/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const { rowCount } = await query(`DELETE FROM data_values WHERE id = $1`, [id]);
+
+    if (rowCount === 0) {
+      throw NotFound('Data value not found');
+    }
+
+    res.json({ data: { deleted: true } });
+  } catch (e) {
+    next(e);
+  }
+});
+
 export default router;

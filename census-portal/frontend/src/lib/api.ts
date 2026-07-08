@@ -99,6 +99,7 @@ export const adminApi = (token: string) => {
       age_group?: string;
       source?: string;
     }) => client.post('/data', data),
+    deleteData: (id: number) => client.delete(`/data/${id}`),
 
     // Full geography hierarchy + data access for the admin's own Data
     // Explorer view — no API key needed, JWT + ADMIN role is enough.

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { publicApi, protectedApi, adminApi, getStoredApiKey, getStoredToken, getStoredUser } from '../lib/api';
 import {
   Search, Download, MapPin, Database, ChevronRight, ChevronDown,
-  Info, SlidersHorizontal, X, Key, Lock, Pencil, Save, RefreshCw, ShieldCheck, Plus,
+  Info, SlidersHorizontal, X, Key, Lock, Pencil, Save, RefreshCw, ShieldCheck, Plus, Trash2,
 } from 'lucide-react';
 
 interface Geography {
@@ -303,6 +303,24 @@ export default function DataExplorer() {
       setEditingId(null);
     } catch (err: any) {
       setEditError(err.response?.data?.error?.message || 'Failed to save changes');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const deleteValue = async (row: DataValue) => {
+    if (!adminClient || row.id == null) return;
+    if (!window.confirm(`Delete this ${row.indicator_name} value for ${row.geography_name}? This cannot be undone.`)) {
+      return;
+    }
+    setSavingId(row.id);
+    setEditError('');
+    try {
+      await adminClient.deleteData(row.id);
+      setData((prev) => prev.filter((d) => d.id !== row.id));
+      setFilteredData((prev) => prev.filter((d) => d.id !== row.id));
+    } catch (err: any) {
+      setEditError(err.response?.data?.error?.message || 'Failed to delete value');
     } finally {
       setSavingId(null);
     }
@@ -1132,13 +1150,23 @@ export default function DataExplorer() {
                                     </button>
                                   </div>
                                 ) : (
-                                  <button
-                                    onClick={() => startEditValue(d)}
-                                    className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white hover:border-cam-yellow/40"
-                                  >
-                                    <Pencil className="w-3 h-3" />
-                                    Edit
-                                  </button>
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={() => startEditValue(d)}
+                                      className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-white hover:border-cam-yellow/40"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => deleteValue(d)}
+                                      disabled={savingId === d.id}
+                                      className="inline-flex items-center gap-1 text-xs bg-cam-ink text-cam-muted border border-cam-line rounded-lg px-2 py-1 hover:text-cam-red hover:border-cam-red/40 disabled:opacity-40"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                      Delete
+                                    </button>
+                                  </div>
                                 )}
                               </td>
                             )}
