@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { compareApiKey } from '../utils/apiKey';
 import { query } from '../db/pool';
 import { Unauthorized, Forbidden, TooManyRequests } from '../utils/errors';
-import { RATE_LIMITS, config } from '../config';
+import { config } from '../config';
 
 // ============================================================
 // API key authentication - for data-access endpoints consumed
@@ -21,7 +21,7 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
     const prefix = apiKey.slice(0, 12);
 
     const { rows } = await query(
-      `SELECT u.id, u.email, u.user_type, u.monthly_limit, u.requests_used,
+      `SELECT u.id, u.email, u.user_type, u.monthly_limit, u.requests_used, u.is_unlimited,
               ak.id as key_id, ak.key_hash
        FROM api_keys ak
        JOIN users u ON u.id = ak.user_id
@@ -64,11 +64,13 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
       ).catch((err) => console.error('Failed to write usage log:', err));
     });
 
-    // Check rate limit
+    // Check rate limit — enforced against this account's own stored
+    // quota (kept in sync with its plan tier), not a flat role-based
+    // number, so upgrading/downgrading a plan actually changes what's
+    // enforced here.
     if (matched.user_type !== 'ADMIN') {
-      const limit = RATE_LIMITS[matched.user_type as keyof typeof RATE_LIMITS] || RATE_LIMITS.USER;
-      if (matched.requests_used >= limit) {
-        throw TooManyRequests(`Monthly quota of ${limit} requests reached.`);
+      if (!matched.is_unlimited && matched.requests_used >= matched.monthly_limit) {
+        throw TooManyRequests(`Monthly quota of ${matched.monthly_limit} requests reached. Upgrade your plan for a higher limit.`);
       }
 
       // Increment request count

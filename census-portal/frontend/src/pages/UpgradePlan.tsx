@@ -19,13 +19,25 @@ const PLANS = [
     key: 'FREE',
     label: 'Free',
     tagline: 'For trying things out',
-    features: ['1 active API key', 'Standard monthly request quota', 'Community support'],
+    features: ['150,000 requests / month', '1 active API key', 'Community support'],
   },
   {
-    key: 'PAID',
-    label: 'Paid',
+    key: 'STARTER',
+    label: 'Starter',
+    tagline: 'For small integrations',
+    features: ['500,000 requests / month', '1 active API key', 'Email support'],
+  },
+  {
+    key: 'PROFESSIONAL',
+    label: 'Professional',
     tagline: 'For production integrations',
-    features: ['Up to 10 active API keys', 'Standard monthly request quota', 'Priority support'],
+    features: ['2,000,000 requests / month', '1 active API key', 'Priority support'],
+  },
+  {
+    key: 'ENTERPRISE',
+    label: 'Enterprise',
+    tagline: 'For large-scale deployments',
+    features: ['Unlimited requests', '1 active API key', 'Dedicated support'],
   },
 ];
 
@@ -145,7 +157,7 @@ export default function UpgradePlan() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {PLANS.map((p) => {
           const isCurrent = p.key === currentPlan;
           const disabled = isCurrent || !!pending || requesting === p.key;

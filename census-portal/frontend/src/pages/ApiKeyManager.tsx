@@ -218,10 +218,11 @@ export default function ApiKeyManager() {
             <Lock className="w-5 h-5 text-cam-yellow shrink-0 mt-0.5" />
             <div>
               <p className="text-white text-sm font-medium">
-                You've used all {usage!.api_keys_limit} key{usage!.api_keys_limit === 1 ? '' : 's'} on the {usage!.plan} plan.
+                You've used all {usage!.api_keys_limit} key{usage!.api_keys_limit === 1 ? '' : 's'} available to your account.
               </p>
               <p className="text-cam-muted text-sm mt-1">
-                upgrade to a paid plan for more keys.
+                Every account is limited to one active API key — one website only ever needs one. Revoke your
+                existing key above to create a new one.
               </p>
             </div>
           </div>

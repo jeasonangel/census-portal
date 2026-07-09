@@ -36,16 +36,22 @@ export const config = {
     saltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10),
   },
 };
-export const RATE_LIMITS = {
-  USER: 150000,
-  ADMIN: -1, // Unlimited
-};
-
-// Billing tier - governs how many active API keys an account may hold.
-// Admins (by user_type) bypass this check entirely regardless of plan.
-export const PLAN_LIMITS: Record<string, { maxApiKeys: number }> = {
-  FREE: { maxApiKeys: 1 },
-  PAID: { maxApiKeys: 10 },
-};
-
 export const DEFAULT_PLAN = 'FREE';
+
+// Billing tiers differ only by monthly API request quota. ENTERPRISE
+// has no numeric cap (isUnlimited) — monthlyLimit is unused for it.
+// Whenever a user's plan changes (registration, admin plan change,
+// upgrade-request approval), their users.monthly_limit/is_unlimited
+// columns are synced from this table so authenticateApiKey's quota
+// check — which reads those columns directly — stays accurate.
+export const PLAN_LIMITS: Record<string, { monthlyLimit: number; isUnlimited?: boolean }> = {
+  FREE: { monthlyLimit: 150000 },
+  STARTER: { monthlyLimit: 500000 },
+  PROFESSIONAL: { monthlyLimit: 2000000 },
+  ENTERPRISE: { monthlyLimit: 0, isUnlimited: true },
+};
+
+// One website only ever needs one API key — a second key would just
+// read the same data — so every account (any plan) may hold at most
+// this many active keys. Admins (by user_type) bypass this entirely.
+export const MAX_API_KEYS_PER_ACCOUNT = 1;

@@ -23,7 +23,7 @@ export default function Login() {
       setStoredUser(user);
       setStoredToken(token);
 
-      navigate('/api-keys');
+      navigate(user.user_type === 'ADMIN' ? '/admin' : '/api-keys');
     } catch (err: any) {
       setError(err.response?.data?.error?.message || 'Login failed');
     } finally {

@@ -65,7 +65,7 @@ interface UpgradeRequestRow {
 }
 
 const CENSUS_YEAR = 2026;
-const PLANS = ['FREE', 'PAID'];
+const PLANS = ['FREE', 'STARTER', 'PROFESSIONAL', 'ENTERPRISE'];
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -1274,7 +1274,7 @@ function AccountsTab({ token }: { token: string }) {
                   <td className="p-3">
                     <span
                       className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full border ${
-                        u.plan === 'PAID'
+                        u.plan !== 'FREE'
                           ? 'bg-cam-green/20 text-cam-green border-cam-green/30'
                           : 'bg-cam-ink text-cam-muted border-cam-line'
                       }`}

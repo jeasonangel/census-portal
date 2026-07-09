@@ -54,7 +54,10 @@ router.get('/users', async (_req, res, next) => {
 // ============================================================
 // PATCH /admin/users/:id/plan - Grant a plan upgrade/downgrade
 // (manual stand-in for a billing system: no payment is processed
-// here, this just raises the account's API key limit)
+// here, this just raises the account's monthly request quota).
+// monthly_limit/is_unlimited are synced from PLAN_LIMITS right here
+// so authenticateApiKey's quota check reflects the new plan
+// immediately, on the account's very next request.
 // ============================================================
 router.patch('/users/:id/plan', async (req, res, next) => {
   try {
@@ -64,12 +67,13 @@ router.patch('/users/:id/plan', async (req, res, next) => {
     if (!plan || !PLAN_LIMITS[plan]) {
       throw BadRequest(`plan must be one of: ${Object.keys(PLAN_LIMITS).join(', ')}`);
     }
+    const { monthlyLimit, isUnlimited } = PLAN_LIMITS[plan];
 
     const { rows } = await query(
-      `UPDATE users SET plan = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING id, email, plan`,
-      [plan, id]
+      `UPDATE users SET plan = $1, monthly_limit = $2, is_unlimited = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4
+       RETURNING id, email, plan, monthly_limit, is_unlimited`,
+      [plan, monthlyLimit, !!isUnlimited, id]
     );
 
     if (rows.length === 0) {
@@ -128,9 +132,10 @@ router.patch('/upgrade-requests/:id', async (req, res, next) => {
     const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
 
     if (action === 'approve') {
+      const { monthlyLimit, isUnlimited } = PLAN_LIMITS[rows[0].requested_plan];
       await query(
-        `UPDATE users SET plan = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [rows[0].requested_plan, rows[0].user_id]
+        `UPDATE users SET plan = $1, monthly_limit = $2, is_unlimited = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
+        [rows[0].requested_plan, monthlyLimit, !!isUnlimited, rows[0].user_id]
       );
     }
 

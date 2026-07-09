@@ -797,8 +797,8 @@ for (const v of VILLAGES) {
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
     const { rows } = await query(
-      `INSERT INTO users (email, password_hash, full_name, user_type, plan, monthly_limit, is_active, is_verified)
-       VALUES ($1, $2, 'System Administrator', 'ADMIN', 'PAID', 9999999, true, true)
+      `INSERT INTO users (email, password_hash, full_name, user_type, plan, monthly_limit, is_unlimited, is_active, is_verified)
+       VALUES ($1, $2, 'System Administrator', 'ADMIN', 'ENTERPRISE', 0, true, true, true)
        ON CONFLICT (email) DO UPDATE SET
          password_hash = EXCLUDED.password_hash
        RETURNING id`,

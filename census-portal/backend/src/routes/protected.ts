@@ -3,7 +3,7 @@ import { authenticateApiKey, authenticateJWT } from '../middleware/auth';
 import { query } from '../db/pool';
 import { generateApiKey, hashApiKey } from '../utils/apiKey';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../utils/errors';
-import { PLAN_LIMITS } from '../config';
+import { PLAN_LIMITS, MAX_API_KEYS_PER_ACCOUNT } from '../config';
 
 const router = Router();
 
@@ -36,21 +36,17 @@ router.post('/keys', authenticateJWT, async (req, res, next) => {
       throw BadRequest('Key name required');
     }
 
-    // Admins are exempt; everyone else is capped by their plan's key limit.
+    // Admins are exempt; everyone else may hold at most one active key
+    // regardless of plan — a second key would just read the same data.
     if (req.user!.user_type !== 'ADMIN') {
-      const plan = req.user!.plan || 'FREE';
-      const maxKeys = PLAN_LIMITS[plan]?.maxApiKeys ?? PLAN_LIMITS.FREE.maxApiKeys;
-
       const { rows: activeKeys } = await query(
         `SELECT COUNT(*)::int AS count FROM api_keys WHERE user_id = $1 AND is_active = true`,
         [req.user!.id]
       );
 
-      if (activeKeys[0].count >= maxKeys) {
+      if (activeKeys[0].count >= MAX_API_KEYS_PER_ACCOUNT) {
         throw Forbidden(
-          plan === 'FREE'
-            ? `Free plan is limited to ${maxKeys} active API key. Revoke your existing key or upgrade to create more.`
-            : `Your plan is limited to ${maxKeys} active API keys. Revoke an existing key or contact us to raise your limit.`,
+          `Each account may hold at most ${MAX_API_KEYS_PER_ACCOUNT} active API key. Revoke your existing key to create a new one.`,
           'PLAN_LIMIT_REACHED'
         );
       }
@@ -121,9 +117,7 @@ router.get('/usage', authenticateJWT, async (req, res, next) => {
       [req.user!.id]
     );
 
-    const maxKeys = req.user!.user_type === 'ADMIN'
-      ? -1
-      : PLAN_LIMITS[user.plan]?.maxApiKeys ?? PLAN_LIMITS.FREE.maxApiKeys;
+    const maxKeys = req.user!.user_type === 'ADMIN' ? -1 : MAX_API_KEYS_PER_ACCOUNT;
 
     res.json({
       data: {

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/pool';
-import { config, RATE_LIMITS } from '../config';
+import { config, PLAN_LIMITS, DEFAULT_PLAN } from '../config';
 import { generateApiKey, hashApiKey } from '../utils/apiKey';
 import { BadRequest, Unauthorized, Conflict } from '../utils/errors';
 
@@ -33,10 +33,10 @@ router.post('/register', async (req, res, next) => {
 
     // Create user
     const { rows } = await query(
-      `INSERT INTO users (email, password_hash, full_name, organization, user_type, monthly_limit, is_active, is_verified)
-       VALUES ($1, $2, $3, $4, 'USER', $5, true, true)
+      `INSERT INTO users (email, password_hash, full_name, organization, user_type, plan, monthly_limit, is_active, is_verified)
+       VALUES ($1, $2, $3, $4, 'USER', $5, $6, true, true)
        RETURNING id, email, full_name, user_type`,
-      [email, hashedPassword, full_name || '', organization || '', RATE_LIMITS.USER]
+      [email, hashedPassword, full_name || '', organization || '', DEFAULT_PLAN, PLAN_LIMITS[DEFAULT_PLAN].monthlyLimit]
     );
 
     const user = rows[0];
