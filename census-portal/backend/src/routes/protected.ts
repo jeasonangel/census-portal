@@ -287,4 +287,98 @@ router.get('/data', authenticateApiKey, async (req, res, next) => {
   }
 });
 
+// ============================================================
+// GET /protected/account/* - Full-hierarchy browsing for any signed-in
+// account, authenticated by JWT instead of X-API-Key. A raw API key
+// is only ever shown once (at creation) and isn't recoverable, so a
+// user who logs in on a new device/browser, or after clearing
+// storage, would otherwise be locked out of browsing their own data
+// even though their account still has an active key. These mirror
+// the /regions|departments|districts + /data routes above exactly,
+// just gated on "signed in" rather than "holds a cached key" — and
+// unlike the API-key path, they don't count against usage_logs/quota,
+// since this is the account owner browsing the site itself, not a
+// metered external integration.
+// ============================================================
+router.get('/account/regions/:code/departments', authenticateJWT, async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { rows } = await query(
+      `SELECT d.code, d.name, d.population
+       FROM spatial_geo r
+       JOIN spatial_geo d ON d.parent_id = r.id
+       WHERE r.code = $1 AND d.level = 'department'
+       ORDER BY d.name`,
+      [code]
+    );
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/account/departments/:code/districts', authenticateJWT, async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { rows } = await query(
+      `SELECT d.code, d.name
+       FROM spatial_geo dept
+       JOIN spatial_geo d ON d.parent_id = dept.id
+       WHERE dept.code = $1 AND d.level = 'district'
+       ORDER BY d.name`,
+      [code]
+    );
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/account/districts/:code/villages', authenticateJWT, async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { rows } = await query(
+      `SELECT v.code, v.name, v.population
+       FROM spatial_geo dist
+       JOIN spatial_geo v ON v.parent_id = dist.id
+       WHERE dist.code = $1 AND v.level = 'village'
+       ORDER BY v.name`,
+      [code]
+    );
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/account/data', authenticateJWT, async (req, res, next) => {
+  try {
+    const { geography, indicator, year = 2026 } = req.query;
+
+    if (!geography || !indicator) {
+      throw BadRequest('geography and indicator are required');
+    }
+
+    const { rows } = await query(
+      `SELECT
+         g.code AS geography_code,
+         g.name AS geography_name,
+         g.level AS geography_level,
+         i.name AS indicator_name,
+         i.unit,
+         dv.year,
+         dv.value
+       FROM data_values dv
+       JOIN spatial_geo g ON g.id = dv.geography_id
+       JOIN indicators i ON i.id = dv.indicator_id
+       WHERE g.code = $1 AND i.code = $2 AND dv.year = $3`,
+      [geography, indicator, year]
+    );
+
+    res.json({ data: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
 export default router;

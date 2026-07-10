@@ -61,6 +61,17 @@ export const accountApi = (token: string) => {
     getUsage: () => client.get('/usage'),
     requestUpgrade: (plan: string) => client.post('/upgrade-request', { plan }),
     getUpgradeRequest: () => client.get('/upgrade-request'),
+
+    // Full geography hierarchy + data access for browsing the site
+    // while signed in — authenticated by this JWT session rather than
+    // a cached raw API key, so it still works after logging out and
+    // back in, on a new device, or after clearing storage (a raw key
+    // is only ever shown once and can't be recovered otherwise).
+    getDepartments: (regionCode: string) => client.get(`/account/regions/${regionCode}/departments`),
+    getDistricts: (deptCode: string) => client.get(`/account/departments/${deptCode}/districts`),
+    getVillages: (districtCode: string) => client.get(`/account/districts/${districtCode}/villages`),
+    getData: (geographyCode: string, indicatorCode: string, year?: number) =>
+      client.get('/account/data', { params: { geography: geographyCode, indicator: indicatorCode, year: year || 2026 } }),
   };
 };
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { publicApi, protectedApi, getStoredApiKey } from '../lib/api';
+import { publicApi, protectedApi, accountApi, getStoredApiKey, getStoredToken } from '../lib/api';
 import {
   Search, Download, MapPin, Database, ChevronRight, ChevronDown,
   Info, SlidersHorizontal, X, Key, Lock,
@@ -72,11 +72,16 @@ export default function DataExplorer() {
   const [currentGeographyCode, setCurrentGeographyCode] = useState<string>('CE');
   const [currentGeographyName, setCurrentGeographyName] = useState<string>('Centre');
 
-  // Department/district/village drill-down requires an API key — the
-  // public API only serves region-level data. Anonymous visitors get
-  // region browsing only, with a prompt to sign in for the rest.
+  // Department/district/village drill-down requires either an API key
+  // or a signed-in session. A raw API key is only ever shown once (at
+  // creation) and can't be recovered, so a signed-in user without a
+  // cached key locally (new device, cleared storage, logged back in)
+  // still gets full browsing via their JWT session — anonymous
+  // visitors are the only ones limited to region-level data.
   const apiKey = getStoredApiKey();
-  const client = apiKey ? protectedApi(apiKey) : null;
+  const token = getStoredToken();
+  const client = apiKey ? protectedApi(apiKey) : token ? accountApi(token) : null;
+  const canBrowseHierarchy = !!apiKey || !!token;
 
   // ============================================================
   // LOAD DATA
@@ -497,12 +502,12 @@ export default function DataExplorer() {
 
                   {region.code === selectedRegion && (
                     <div className="ml-3 border-l border-cam-line pl-1">
-                      {!apiKey ? (
+                      {!canBrowseHierarchy ? (
                         <div className="flex items-start gap-1.5 text-xs text-cam-muted px-2 py-1.5">
                           <Lock className="w-3 h-3 shrink-0 mt-0.5" />
                           <span>
-                            <Link to="/api-keys" className="text-cam-yellow hover:underline">
-                              Get an API key
+                            <Link to="/login" className="text-cam-yellow hover:underline">
+                              Sign in
                             </Link>{' '}
                             to browse departments, districts and villages.
                           </span>
